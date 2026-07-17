@@ -1,0 +1,2 @@
+Go test: 22 passed in 1 packages
+EXIT_CODE=0

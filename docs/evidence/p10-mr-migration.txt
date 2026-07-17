@@ -1,0 +1,5 @@
+# MR migration to Provider interface — verification (2026-06-02T00:49:55Z)
+- provider: +CreateMergeRequest, +UpdateMergeRequest (+ option types). Both adapters + mocks + TDD tests (4).
+- cmd/mr.go: create + close migrated; list/mine/approve/merge/diff stay raw GL (documented, GitLab-specific).
+- build exit 0, vet exit 0, gofmt clean. ./cmd + ./internal/provider tests: ok.
+- Full suite unchanged pattern: only httptest bind panics fail (sandbox).

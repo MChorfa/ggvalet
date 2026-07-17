@@ -1,0 +1,2 @@
+Go test: 225 passed in 11 packages
+EXIT=0

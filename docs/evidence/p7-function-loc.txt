@@ -1,0 +1,6 @@
+TestGitHub_RealConstructor_SendsBearerHeader(t 33
+TestGitHub_RealConstructor_RecordsJournalAfterListIssues(t 43
+TestGitHub_RealConstructor_DisabledFlag_ReturnsErrFeatureDisabled(t 13
+TestGitHub_RealConstructor_ErrorPath_RecordsErrorJournal(t 36
+TestGitHub_RealConstructor_EnterpriseHost_ParsedCorrectly(t 19
+EXIT=0

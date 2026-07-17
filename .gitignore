@@ -1,0 +1,30 @@
+# Binaries
+glv
+/glv
+*.exe
+*.test
+*.out
+
+# Go
+vendor/
+*.o
+*.a
+
+# Local runtime data
+.gitlabvalet/
+journal.jsonl
+cache/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Build artifacts
+dist/
+site/
+public/
+sbom.cdx.json
+*.pem
+*.sig

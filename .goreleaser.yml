@@ -1,0 +1,79 @@
+version: 2
+project_name: glv
+
+before:
+  hooks:
+    - go mod tidy
+    - syft dir:. -o cyclonedx-json=sbom.cdx.json
+
+builds:
+  - id: glv
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    main: .
+
+archives:
+  - id: glv
+    formats:
+      - tar.gz
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+  extra_files:
+    - glob: ./sbom.cdx.json
+
+sboms:
+  - id: archive
+    artifacts: archive
+  - id: source
+    artifacts: source
+
+signs:
+  - id: checksum
+    cmd: cosign
+    certificate: '${artifact}.pem'
+    args:
+      - sign-blob
+      - --yes
+      - --output-certificate=${certificate}
+      - --output-signature=${signature}
+      - ${artifact}
+    artifacts: checksum
+    output: true
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-next'
+
+changelog:
+  use: git
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+release:
+  github:
+    owner: ckodex
+    name: gitlabvalet
+  extra_files:
+    - glob: ./sbom.cdx.json
+  include_meta: true

@@ -1,0 +1,5 @@
+# p11 baseline vet/fmt
+--- go vet ./... ---
+vet EXIT=0
+--- gofmt -l . ---
+fmt: (empty above = all formatted)

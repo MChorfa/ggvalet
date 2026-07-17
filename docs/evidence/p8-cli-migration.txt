@@ -1,0 +1,22 @@
+# CLI migration to Provider interface — verification log (2026-06-01T23:54:54Z)
+
+## Scope
+- client.New now selects provider via providerfactory.NewFromConfig (honors GLVALET_PROVIDER); was hardcoded gitlab.
+- cmd/issue.go: create, update, close, comment migrated from glClient.GL.* to glClient.Provider.*
+- issue list + mine intentionally left on raw GitLab SDK (TODO(ckodex) in source): need ListIssues milestone-title filter / cross-project ListMyIssues on the interface first.
+
+## build ./...    -> exit 0, no errors
+## go vet ./...   -> exit 0, no errors
+## gofmt -l .     -> clean (empty)
+
+## go test ./cmd/ (testProvider mock, no httptest)
+ok  github.com/ckodex/gitlabvalet/cmd
+## go test ./internal/provider/ (stub conformance)
+ok  github.com/ckodex/gitlabvalet/internal/provider
+
+## Full suite: 9 ok packages; 3 FAIL packages.
+All 3 failures are httptest.newLocalListener panics (sandbox blocks loopback bind):
+  internal/client, internal/provider/github, internal/provider/gitlab
+Zero assertion (want/got) failures. No build failures. Pre-existing green tests
+(TestGitLab_Kind, TestClient_*) fail identically => environmental, not regression.
+Run 'go test ./...' outside sandbox for full green (baseline 225 passed).

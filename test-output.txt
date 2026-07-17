@@ -1,0 +1,4 @@
+# ./internal/config
+open /Users/mchorfa/Library/Caches/go-build/d9/d927df828e19de7aa68b219bc5d4621a598674a4dde85eb29d120d1d4adc994a-d: operation not permitted
+FAIL	./internal/config [setup failed]
+FAIL

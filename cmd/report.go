@@ -1,0 +1,188 @@
+package cmd
+
+import (
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/ckodex/gitlabvalet/internal/client"
+	"github.com/ckodex/gitlabvalet/internal/config"
+	"github.com/ckodex/gitlabvalet/internal/journal"
+	"github.com/ckodex/gitlabvalet/internal/report"
+	"github.com/spf13/cobra"
+	gl "github.com/xanzy/go-gitlab"
+)
+
+func reportCmd() *cobra.Command {
+	var since, format, author, output string
+
+	cmd := &cobra.Command{
+		Use:   "report",
+		Short: "Generate a manager-ready activity report from the journal",
+		Example: `  glv report --since 7d                       # print markdown to stdout
+  glv report --since 7d --output weekly.md    # write to file
+  glv report --since 30d --format plain       # plain text
+  glv report --since 7d --author "Noufel C."  # include your name
+  glv report push --since 7d \
+    --dst-host sc01-trt.thales-systems.ca/gitlab \
+    --dst-project management/status-reports   # push as issue`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dur, err := parseDuration(since)
+			if err != nil {
+				return fmt.Errorf("--since: %w", err)
+			}
+
+			sinceTime := time.Now().UTC().Add(-dur)
+			entries, err := glClient.Journal.Query(journal.Filter{Since: sinceTime})
+			if err != nil {
+				return err
+			}
+
+			if len(entries) == 0 {
+				fmt.Println(colorDim("No activity in journal for that period."))
+				return nil
+			}
+
+			opts := report.Options{
+				Since:  sinceTime,
+				Until:  time.Now().UTC(),
+				Author: author,
+			}
+			switch format {
+			case "plain", "text":
+				opts.Format = report.FormatPlain
+			default:
+				opts.Format = report.FormatMarkdown
+			}
+
+			w := os.Stdout
+			if output != "" {
+				f, err := os.Create(output)
+				if err != nil {
+					return fmt.Errorf("create output: %w", err)
+				}
+				defer f.Close()
+				w = f
+				defer func() { ok("Report written to %s", output) }()
+			}
+
+			report.Generate(w, entries, opts)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&since, "since", "7d", "Time window: 1h, 24h, 7d, 30d, 2w")
+	cmd.Flags().StringVar(&format, "format", "markdown", "Output format: markdown|plain")
+	cmd.Flags().StringVar(&author, "author", "", "Your name for the report header")
+	cmd.Flags().StringVarP(&output, "output", "o", "", "Write to file instead of stdout")
+
+	cmd.AddCommand(reportPushCmd())
+	return cmd
+}
+
+// reportPushCmd generates a report from the journal and opens it as an issue
+// on any GitLab project — great for posting weekly status to a management board.
+func reportPushCmd() *cobra.Command {
+	var since, author, dstHost, dstProject, title, reportHost string
+
+	cmd := &cobra.Command{
+		Use:   "push",
+		Short: "Post the activity report as an issue on a target project",
+		Example: `  # Post weekly report to a management board on sc01
+  glv report push \
+    --since 7d \
+    --author "Noufel Chorfa" \
+    --dst-host sc01-trt.thales-systems.ca/gitlab \
+    --dst-project management/weekly-status
+
+  # Scope the report to one instance, push to another
+  glv report push \
+    --report-host gitlab.thalesdigital.io \
+    --dst-host    sc01-trt.thales-systems.ca/gitlab \
+    --dst-project management/reports`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// ── Resolve destination ──────────────────────────────────────────
+			if dstProject == "" {
+				return fmt.Errorf("--dst-project required")
+			}
+			if dstHost == "" {
+				dstHost = cfg.Host
+			}
+
+			// ── Build report from journal ────────────────────────────────────
+			dur, err := parseDuration(since)
+			if err != nil {
+				return fmt.Errorf("--since: %w", err)
+			}
+			sinceTime := time.Now().UTC().Add(-dur)
+
+			jFilter := journal.Filter{Since: sinceTime}
+			if reportHost != "" {
+				jFilter.Host = reportHost
+			}
+
+			entries, err := glClient.Journal.Query(jFilter)
+			if err != nil {
+				return err
+			}
+			if len(entries) == 0 {
+				fmt.Println(colorDim("No activity in journal for that period — nothing to push."))
+				return nil
+			}
+
+			var buf strings.Builder
+			report.Generate(&buf, entries, report.Options{
+				Since:  sinceTime,
+				Until:  time.Now().UTC(),
+				Author: author,
+				Format: report.FormatMarkdown,
+			})
+			body := buf.String()
+
+			// ── Auto-generate title if not provided ──────────────────────────
+			if title == "" {
+				_, week := sinceTime.ISOWeek()
+				title = fmt.Sprintf("Activity Report %s (W%02d)",
+					sinceTime.Format("2006"), week)
+			}
+
+			// ── Build destination client ─────────────────────────────────────
+			dstCfg, err := config.ForHost(cfg.Hosts, dstHost, cfg.JournalPath)
+			if err != nil {
+				return fmt.Errorf("dst host: %w", err)
+			}
+			dstC, err := client.New(dstCfg)
+			if err != nil {
+				return fmt.Errorf("dst client: %w", err)
+			}
+
+			// ── Create the issue ─────────────────────────────────────────────
+			info("Pushing report to %s:%s", shortHostname(dstHost), dstProject)
+
+			iss, _, err := dstC.GL.Issues.CreateIssue(dstProject, &gl.CreateIssueOptions{
+				Title:       gl.Ptr(title),
+				Description: gl.Ptr(body),
+				Labels:      &gl.LabelOptions{"report", "status"},
+			})
+			if err != nil {
+				dstC.RecErr(journal.OpCreate, journal.EntityIssue, dstProject, "", err.Error())
+				return fmt.Errorf("create report issue: %w", err)
+			}
+
+			dstC.Rec(journal.OpCreate, journal.EntityIssue, dstProject, "",
+				iss.ID, iss.IID, iss.Title, iss.WebURL, "report-push")
+			ok("Report issue #%d created: %s", iss.IID, iss.WebURL)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&since, "since", "7d", "Journal time window: 1h, 24h, 7d, 30d, 2w")
+	cmd.Flags().StringVar(&author, "author", "", "Author name shown in report header")
+	cmd.Flags().StringVar(&dstHost, "dst-host", "", "Destination hostname (default: active host)")
+	cmd.Flags().StringVar(&dstProject, "dst-project", "", "Destination project path or ID (required)")
+	cmd.Flags().StringVar(&title, "title", "", "Issue title (auto-generated if omitted)")
+	cmd.Flags().StringVar(&reportHost, "report-host", "",
+		"Scope journal entries to a single host (default: all hosts)")
+	return cmd
+}

@@ -1,0 +1,84 @@
+version: 2
+project_name: glv
+
+before:
+  hooks:
+    - go mod tidy
+    - syft dir:. -o cyclonedx-json=sbom.cdx.json
+
+builds:
+  - id: glv
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    main: .
+
+archives:
+  - id: glv
+    formats:
+      - tar.gz
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+  extra_files:
+    - glob: ./sbom.cdx.json
+
+sboms:
+  - id: archive
+    artifacts: archive
+  - id: source
+    artifacts: source
+
+signs:
+  - id: checksum
+    cmd: cosign
+    certificate: '${artifact}.pem'
+    args:
+      - sign-blob
+      - --yes
+      - --output-certificate=${certificate}
+      - --output-signature=${signature}
+      - ${artifact}
+    artifacts: checksum
+    output: true
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-next'
+
+changelog:
+  use: git
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+gitlab_urls:
+  api: '{{ .Env.CI_API_V4_URL | default "https://gitlab.com/api/v4/" }}'
+  download: '{{ .Env.CI_SERVER_URL | default "https://gitlab.com" }}'
+  use_job_token: true
+
+release:
+  gitlab:
+    owner: ""
+    name: '{{ .Env.CI_PROJECT_ID | default "ckodex/gitlabvalet" }}'
+  extra_files:
+    - glob: ./sbom.cdx.json
+  include_meta: true

@@ -1,0 +1,25 @@
+# p12 CI evidence-gates — 2026-06-02T13:42:33Z
+## .gitlab-ci.yml validation
+yamllint (relaxed, line-length disabled): clean
+stages: [
+  "verify",
+  "test",
+  "security",
+  "governance",
+  "build"
+]
+jobs: verify, test, deps, vuln, secrets, sbom, vwp, build
+
+## VWP linter (scripts/vwp-lint.sh)
+shellcheck: clean
+positive run: PASS (all 9 stubs surfaced in docs/VWP-ATTESTATION.md)
+negative run: injected 'robust' into a temp Go file -> exit 1 (gate is real)
+
+## Makefile targets added: cover (80% gate), vwp
+make vwp -> exit 0, VWP lint: PASS
+
+## Gate -> VWP mapping
+test (coverage>=80%)  -> P-VW-005 NoUnmeasuredCoverage
+deps (verify+tidy)    -> P-VW-008 NoHallucinatedDependencies
+vwp (hedge/mkt/stub)  -> P-SC-001 / P-SC-002 / P-VW-004
+MR template           -> P-VW-001 evidence_refs + P-SC-003 C/S/A labels

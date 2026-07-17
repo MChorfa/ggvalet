@@ -1,0 +1,19 @@
+# Label migration to Provider interface — verification log (2026-06-02T00:40:24Z)
+
+## Scope
+- provider.Provider: added CreateLabel; provider.Label gained OpenIssuesCount; new CreateLabelOptions.
+- GitLab adapter: CreateLabel + OpenIssuesCount in toLabel.
+- GitHub adapter: CreateLabel (strips leading '#' from color; GitHub stores bare hex).
+- mocks: stubProvider + cmd testProvider updated (compile-time conformance).
+- TDD tests added: CreateLabel happy-path + error for both adapters (4 tests).
+- cmd/label.go: list + create migrated to glClient.Provider.*; sync left on raw GL (TODO: cross-host).
+
+## build ./...  -> exit 0    ## go vet ./...  -> exit 0    ## gofmt -l .  -> clean
+
+## go test ./cmd/ ./internal/provider/  (no httptest)
+ok  github.com/ckodex/gitlabvalet/cmd
+ok  github.com/ckodex/gitlabvalet/internal/provider
+
+## Full suite: 9 ok; 3 FAIL (internal/client, provider/github, provider/gitlab).
+All FAIL = httptest.newLocalListener bind panic (sandbox). Zero want/got failures,
+zero build failures. Run 'go test ./...' outside sandbox for full green.

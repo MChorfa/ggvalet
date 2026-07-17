@@ -1,0 +1,29 @@
+# p11 marker + raw-SDK inventory — 2026-06-02T13:37:23Z
+## Open completion markers (non-test):
+cmd/plan.go:148:			fmt.Fprintf(os.Stderr, "note: epic linkage for issue [%s] not yet wired (Phase 3)\n", i.ID)
+cmd/mr.go:31:// TODO(ckodex): create + close are migrated to glClient.Provider.*. The
+cmd/label.go:115:		// TODO(ckodex): migrate to the Provider interface once syncClients builds
+cmd/issue.go:41:		// TODO(ckodex): migrate to glClient.Provider.ListIssues once
+cmd/issue.go:129:		// TODO(ckodex): no provider equivalent yet — this uses the GitLab
+internal/provider/github/github.go:410:// TODO(ckodex): implement repo-scoped milestone creation when plan.Target supports repo refs.
+internal/provider/github/github.go:416:// TODO(ckodex): consider mapping to tracking issue with checklist if user opts in.
+internal/provider/github/github.go:423:// TODO(ckodex): implement repo-scoped milestone listing when plan.Target supports repo refs.
+internal/provider/github/github.go:429:// TODO(ckodex): consider mapping to label-filtered issues if user opts in.
+
+## Raw client.GL.* call sites per cmd file (provider-migration residual):
+cmd/epic.go:5
+cmd/issue.go:2
+cmd/label.go:3
+cmd/milestone.go:4
+cmd/mr.go:6
+cmd/renovate.go:4
+cmd/report.go:1
+cmd/search.go:4
+cmd/shields.go:6
+cmd/standup.go:3
+cmd/timeline.go:2
+cmd/tui.go:4
+cmd/sync.go:9
+
+## Total raw .GL. (non-test):
+      53

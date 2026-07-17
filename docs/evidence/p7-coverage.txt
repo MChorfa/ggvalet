@@ -1,0 +1,19 @@
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:38:	New			88.9%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:77:	NewWithClient		100.0%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:82:	isDefaultGitHubAPI	80.0%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:92:	Kind			100.0%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:95:	Host			100.0%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:99:	splitProject		100.0%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:109:	ListIssues		100.0%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:152:	GetIssue		71.4%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:166:	CreateIssue		80.0%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:188:	ListMergeRequests	88.2%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:223:	GetMergeRequest		85.7%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:237:	ListLabels		80.0%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:258:	toIssue			88.2%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:301:	toPR			90.5%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:352:	toLabel			100.0%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:362:	toUser			100.0%
+github.com/ckodex/gitlabvalet/internal/provider/github/github.go:373:	derefTime		66.7%
+total:									(statements)		88.3%
+EXIT=0

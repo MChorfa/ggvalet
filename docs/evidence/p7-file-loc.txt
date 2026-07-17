@@ -1,0 +1,2 @@
+     273 /Users/mchorfa/Documents/projects/runbase/ckodex-glv-agent/gitlabvalet-package/gitlabvalet/internal/provider/github/github_integration_test.go
+EXIT=0

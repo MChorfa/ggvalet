@@ -1,0 +1,31 @@
+# p17 release & supply-chain pipeline (DEF-02) — 2026-06-02T14:32:35Z
+
+## Makefile targets added: checksums, sbom, release (+ DIST var; VERSION fallback v5.0.0 -> v0.0.0-dev)
+## .gitlab-ci.yml: +release stage (tag-driven, rules: $CI_COMMIT_TAG)
+   - id_tokens.SIGSTORE_ID_TOKEN (aud sigstore) for cosign KEYLESS signing via GitLab OIDC
+   - steps: install syft+cosign -> make cross/checksums/sbom -> cosign sign-blob SHA256SUMS -> cosign verify-blob
+   - artifacts: dist/ expire_in never
+
+## LOCALLY VERIFIED (sandbox, signing is CI-only):
+### make release built 5 cross binaries + SHA256SUMS + CycloneDX SBOM
+### checksum self-verification (sha256sum -c / shasum -c):
+glv-darwin-amd64: OK
+glv-darwin-arm64: OK
+glv-linux-amd64: OK
+glv-linux-arm64: OK
+glv-windows-amd64.exe: OK
+### SBOM validity:
+  bomFormat=CycloneDX specVersion=1.6 components=220
+### SHA256SUMS:
+  751e6d43df0e736f999130f50c14403918c8bba1fe7f9c9a5ebc197b86d9d918  glv-darwin-amd64
+  7e3c7868e592b481949e53752a60a6990df4ef86f71eb20725c736fd9ecaca15  glv-darwin-arm64
+  7a72eb98ca61f75c36d97eb8833c24a5cb08ffcfda0dbc6260341ea26eb2926a  glv-linux-amd64
+  7977a82da11b3b3d0a15b02073c897842ec2bfd3322582f18a40a4de567312dd  glv-linux-arm64
+  0bc0dd526bee7897d53cb8d3f2c0531559474c93829146e59a198a33e334bbe9  glv-windows-amd64.exe
+
+## Classification:
+  release pipeline definition + local artifact assembly (cross/checksums/sbom): [C] verified here
+  cosign keyless sign-blob + verify-blob: [S] wired, runs on first tag pipeline (needs GitLab OIDC)
+  => DEF-02 (signed release artifacts): pipeline [C], executed-signature [S] pending first tag
+
+## tool versions: syft 1.44.0, cosign v3.0.6 (local). CI installs latest in-job.

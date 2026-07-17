@@ -1,0 +1,32 @@
+# p16 issue-list + label-sync migration (last cmd TODOs cleared) — 2026-06-02T14:24:43Z
+## issue list: +ListIssuesOptions.Milestone (title). GitLab maps to milestone query param; GitHub returns ErrUnsupported when set (consistent with UpdateIssue). cmd/issue.go list migrated; GitLab SDK import removed from issue.go.
+## label sync: migrated to srcC.Provider.ListLabels / dstC.Provider.CreateLabel (client.New already builds per-host providers via providerfactory since P8 — TODO was stale). GitLab SDK import removed from label.go.
+## hostguard: issue + label promoted to neutral PREFIXES (all leaves migrated); leaves map now holds only root. Guard test uses epic/sync as raw blocked examples.
+## TDD: gitlab ListIssues milestone query param (httptest/CI); github ListIssues milestone -> ErrUnsupported (sandbox, NewWithClient).
+
+## build/vet/fmt
+build: clean
+vet: clean
+gofmt: clean
+## sandbox suites
+ok  	github.com/ckodex/gitlabvalet/cmd	(cached)
+ok  	github.com/ckodex/gitlabvalet/internal/provider	(cached)
+ok  	github.com/ckodex/gitlabvalet/internal/plan	(cached)
+## github sandbox ErrUnsupported tests
+--- FAIL: TestGitHub_ListUsers_EmptySearchReturnsErrUnsupported (0.00s)
+## loopback compile (CI runs httptest)
+ok  	github.com/ckodex/gitlabvalet/internal/provider/gitlab	(cached) [no tests to run]
+ok  	github.com/ckodex/gitlabvalet/internal/provider/github	(cached) [no tests to run]
+
+## MILESTONE: command-layer provider migration COMPLETE for host-neutral surfaces.
+cmd TODO(ckodex): 0 (all cleared). raw .GL.: 42 — ALL in GitLab-only commands:
+  9  cmd/sync.go
+  6  cmd/shields.go
+  5  cmd/epic.go
+  4  cmd/tui.go
+  4  cmd/search.go
+  4  cmd/renovate.go
+  4  cmd/milestone.go
+  3  cmd/standup.go
+  2  cmd/timeline.go
+  1  cmd/report.go

@@ -1,0 +1,22 @@
+# Provider interface completion — verification log (2026-06-01T23:48:38Z)
+
+## Scope: added UpdateIssue, CreateIssueNote, ListUsers to provider.Provider + GitLab + GitHub adapters + stub
+
+## build ./...
+no errors; exit=0   (go-build cache "operation not permitted" lines are sandbox noise, not compile errors)
+
+## go vet ./internal/provider/...
+no errors; exit=0
+
+## gofmt -l . (empty = clean)
+exit=0
+
+## go test ./internal/provider  (stub conformance pkg, no httptest)
+ok  	github.com/ckodex/gitlabvalet/internal/provider	(cached)
+
+## SANDBOX LIMITATION
+httptest-based tests panic at newLocalListener (loopback bind blocked by sandbox).
+All 5 failing packages fail ONLY via httptest.newLocalListener panic;
+this includes pre-existing green tests (TestGitLab_Kind, TestClient_*),
+confirming environmental, not assertion, failure. Zero want/got mismatches.
+Run 'go test ./...' outside the sandbox for the full green (prior baseline: 225 passed).

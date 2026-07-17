@@ -1,0 +1,39 @@
+P19 WORK RECONCILER EVIDENCE
+Date: 2026-07-15
+Classification: C for implemented code and locally executed gates
+
+Toolchain
+- Declared baseline: Go 1.24.0
+- Executing toolchain: go1.26.5 darwin/arm64
+- SQLite driver: modernc.org/sqlite v1.43.0
+
+Executable gates
+- go test ./...: PASS; all packages green
+- go build ./...: PASS
+- go vet ./...: PASS; no output
+- gofmt -l .: PASS; no output
+- go mod verify: PASS; all modules verified
+- go mod tidy drift check: PASS; go.mod and go.sum hashes unchanged
+- bash scripts/vwp-lint.sh: PASS
+- critical coverage (state, observed, plan, reconcile): PASS at 80.5%
+- make cross: PASS; darwin arm64/amd64, linux arm64/amd64, windows amd64
+
+Behavior evidence
+- observed provider test proves intent and outcome persistence.
+- fail-closed test proves a failed intent write prevents the remote call.
+- uncertain-outcome test proves a failed outcome write returns ReceiptUncertainError.
+- reconciler test injects an issue failure after milestone and epic creation;
+  resume creates no duplicate milestone or epic, creates one issue, and links it once.
+- uncertain plan steps refuse automatic resume.
+- legacy JSONL import is one-time and preserves failed outcomes.
+
+Known failing inherited gate
+- make cover: FAIL at 30.6% repository-wide versus the 80% policy.
+- This deficit predates P19 and is not relabeled as passing. The new critical
+  slice has a separate reproducible `make cover-p19` gate at 80.5%.
+
+Artifact boundary
+- SQLite is authoritative for operation receipts and plan checkpoints.
+- JSONL remains the report/standup compatibility surface and export format.
+- Recovery stops and resumes; it does not delete remote resources automatically.
+- GitLab is the only reconciliation provider in P19.

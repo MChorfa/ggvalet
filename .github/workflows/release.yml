@@ -1,0 +1,78 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  packages: write
+  pages: write
+  id-token: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean --config .goreleaser.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload metadata artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: goreleaser-metadata
+          path: |
+            dist/metadata.json
+            dist/artifacts.json
+          if-no-files-found: error
+
+  pages:
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: goreleaser-metadata
+          path: dist
+
+      - name: Build site
+        run: bash scripts/build-site.sh --metadata dist/metadata.json --artifacts dist/artifacts.json --version ${{ github.ref_name }} --output site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

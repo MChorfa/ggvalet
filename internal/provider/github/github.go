@@ -523,27 +523,24 @@ func (g *GitHub) CreateLabel(ctx context.Context, project string, opts provider.
 	return toLabel(lbl), nil
 }
 
-// CreateGroupMilestone is unsupported on GitHub (milestones are repo-scoped).
-// TODO(ckodex): implement repo-scoped milestone creation when plan.Target supports repo refs.
+// CreateGroupMilestone is unsupported on GitHub because milestones are
+// repo-scoped and the neutral interface carries a groupID with no repo mapping.
 func (g *GitHub) CreateGroupMilestone(ctx context.Context, groupID int, opts provider.CreateMilestoneOptions) (provider.Milestone, error) {
 	return provider.Milestone{}, provider.ErrUnsupported
 }
 
 // CreateGroupEpic is unsupported on GitHub (no first-class epic concept).
-// TODO(ckodex): consider mapping to tracking issue with checklist if user opts in.
 func (g *GitHub) CreateGroupEpic(ctx context.Context, groupID int, opts provider.CreateEpicOptions) (provider.Epic, error) {
 	return provider.Epic{}, provider.ErrUnsupported
 }
 
 // ListGroupMilestones is unsupported on GitHub because milestones are repo-scoped,
 // not org/group-scoped; groupID has no equivalent in the GitHub API.
-// TODO(ckodex): implement repo-scoped milestone listing when plan.Target supports repo refs.
 func (g *GitHub) ListGroupMilestones(_ context.Context, _ int, _ provider.ListGroupMilestonesOptions) ([]provider.Milestone, error) {
 	return nil, provider.ErrUnsupported
 }
 
 // ListGroupEpics is unsupported on GitHub (no first-class epic concept).
-// TODO(ckodex): consider mapping to label-filtered issues if user opts in.
 func (g *GitHub) ListGroupEpics(_ context.Context, _ int, _ provider.ListGroupEpicsOptions) ([]provider.Epic, error) {
 	return nil, provider.ErrUnsupported
 }

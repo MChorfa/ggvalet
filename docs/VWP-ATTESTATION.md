@@ -13,7 +13,7 @@
 > **completed in P8** — `client.New` now selects the provider via
 > `providerfactory.NewFromConfig` (`internal/client/client.go:56-63`); it is reclassified
 > `[C]`. (2) the old "Stubs remaining: 0" claim was false. P19 removes the
-> plan-linkage deferral; four intentional GitHub `ErrUnsupported` TODOs remain
+> plan-linkage deferral; four intentional GitHub `ErrUnsupported` host limits remain
 > surfaced in *Stubs remaining* (P-VW-004).
 
 ---
@@ -251,7 +251,7 @@ deferred:         ["MR list/mine/approve/merge/diff neutral methods"]
 
 ```yaml
 capability_id:    p11-ga-honesty-baseline
-claim:            On 2026-06-02, go build ./... exits 0, go vet ./... exits 0, and gofmt -l . is empty. The 7 packages that do not use httptest loopback servers pass with coverage 84.8%-100% (config 84.8, plan 86.7, cache 92.9, journal 95.7, report 98.0, parallel 100.0, providerfactory 100.0). The remaining 3 packages (internal/client, internal/provider/gitlab, internal/provider/github) use httptest.NewServer loopback listeners which this sandbox denies (bind: operation not permitted); they are CI-verified, not sandbox-verified. A marker inventory records 0 cmd-layer TODOs + 4 GitHub ErrUnsupported TODOs and 42 raw .GL. call sites across 10 GitLab-only cmd files.
+claim:            On 2026-06-02, go build ./... exits 0, go vet ./... exits 0, and gofmt -l . is empty. The 7 packages that do not use httptest loopback servers pass with coverage 84.8%-100% (config 84.8, plan 86.7, cache 92.9, journal 95.7, report 98.0, parallel 100.0, providerfactory 100.0). The remaining 3 packages (internal/client, internal/provider/gitlab, internal/provider/github) use httptest.NewServer loopback listeners which this sandbox denies (bind: operation not permitted); they are CI-verified, not sandbox-verified. A marker inventory records 0 cmd-layer TODOs + 4 GitHub ErrUnsupported host limits and 42 raw .GL. call sites across 10 GitLab-only cmd files.
 classification:   C
 evidence_refs:
   - kind:  test_output
@@ -326,10 +326,10 @@ cleared P13–P16.
 
 | File:line | Marker | Intent |
 |---|---|---|
-| `internal/provider/github/github.go:410` | `TODO(ckodex)` | repo-scoped milestone creation (GitHub milestones are repo-, not group-scoped) |
-| `internal/provider/github/github.go:416` | `TODO(ckodex)` | optional epic→tracking-issue mapping |
-| `internal/provider/github/github.go:423` | `TODO(ckodex)` | repo-scoped milestone listing |
-| `internal/provider/github/github.go:429` | `TODO(ckodex)` | optional epic→label-filtered-issues mapping |
+| `internal/provider/github/github.go:528` | `ErrUnsupported` | repo-scoped milestone creation (GitHub milestones are repo-, not group-scoped) |
+| `internal/provider/github/github.go:533` | `ErrUnsupported` | optional epic→tracking-issue mapping |
+| `internal/provider/github/github.go:539` | `ErrUnsupported` | repo-scoped milestone listing |
+| `internal/provider/github/github.go:544` | `ErrUnsupported` | optional epic→label-filtered-issues mapping |
 
 > ✅ Command-migration TODOs cleared: `issue mine` (P13); `mr` list/mine/approve/merge (P14);
 > `mr diff` (P15); `issue list` + `label sync` (P16). `cmd/issue.go`, `cmd/mr.go`,
@@ -339,10 +339,10 @@ cleared P13–P16.
 
 | File:line | Marker | Intent |
 |---|---|---|
-| `internal/provider/github/github.go:410` | `TODO(ckodex)` | repo-scoped milestone creation (GitHub milestones are repo-, not group-scoped) |
-| `internal/provider/github/github.go:416` | `TODO(ckodex)` | optional epic→tracking-issue mapping |
-| `internal/provider/github/github.go:423` | `TODO(ckodex)` | repo-scoped milestone listing |
-| `internal/provider/github/github.go:429` | `TODO(ckodex)` | optional epic→label-filtered-issues mapping |
+| `internal/provider/github/github.go:528` | `ErrUnsupported` | repo-scoped milestone creation (GitHub milestones are repo-, not group-scoped) |
+| `internal/provider/github/github.go:533` | `ErrUnsupported` | optional epic→tracking-issue mapping |
+| `internal/provider/github/github.go:539` | `ErrUnsupported` | repo-scoped milestone listing |
+| `internal/provider/github/github.go:544` | `ErrUnsupported` | optional epic→label-filtered-issues mapping |
 
 These 4 return `provider.ErrUnsupported` by design (no GitHub equivalent); they are
 correct behavior on a GitHub host, not incomplete work, and do not block GitLab GA.

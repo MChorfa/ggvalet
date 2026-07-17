@@ -85,9 +85,12 @@ cp -R "$ROOT/pages/." "$OUTDIR/"
 mkdir -p "$OUTDIR/docs"
 cp "$ROOT/README.md" "$OUTDIR/docs/README.md"
 
-# Include the installer in the site root.
+# Include the installers in the site root.
 if [[ -f "$ROOT/scripts/install-glv.sh" ]]; then
   cp "$ROOT/scripts/install-glv.sh" "$OUTDIR/install.sh"
+fi
+if [[ -f "$ROOT/scripts/install-glv.ps1" ]]; then
+  cp "$ROOT/scripts/install-glv.ps1" "$OUTDIR/install.ps1"
 fi
 
 # Include the in-repo docs/ as a sub-section of the site.

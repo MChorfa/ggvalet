@@ -8,13 +8,21 @@ Every tagged release ships with:
 - `SHA256SUMS.pem` (cosign keyless certificate)
 - CycloneDX SBOM (`sbom.cdx.json`)
 
+Download the archive, `SHA256SUMS`, `SHA256SUMS.sig`, and `SHA256SUMS.pem` for the
+release you want, then extract the binary:
+
+```bash
+tar -xzf glv_*.tar.gz
+RELEASE_TAG=$(./glv --version | awk '{print $2}')
+```
+
 ## Checksums
 
 ```bash
 sha256sum -c SHA256SUMS
 ```
 
-On macOS, `sha256sum` may not be installed; use `shasum -a 256` instead:
+On macOS, `sha256sum` may not be installed; use `shasum` instead:
 
 ```bash
 shasum -a 256 -c SHA256SUMS
@@ -22,10 +30,7 @@ shasum -a 256 -c SHA256SUMS
 
 ## Cosign signature
 
-Set the tag you downloaded and verify the checksum file:
-
 ```bash
-RELEASE_TAG="v0.0.0"  # replace with the release tag you downloaded
 RELEASE_PROJECT_URL="https://github.com/ckodex/gitlabvalet"
 RELEASE_ISSUER="https://token.actions.githubusercontent.com"
 

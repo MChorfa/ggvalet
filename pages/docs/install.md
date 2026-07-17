@@ -14,28 +14,40 @@ Use a different install directory:
 curl -L https://ckodex.github.io/gitlabvalet/install.sh | INSTALL_DIR=~/.local/bin bash
 ```
 
-The installer detects your OS and architecture, downloads the matching archive
-from GitHub Releases, verifies the SHA-256 checksum, and installs `glv`.
+The installer detects your OS and architecture, queries the GitHub latest release
+API, downloads the matching archive, verifies the SHA-256 checksum, and installs
+`glv`.
 
 ## Manual install
 
-If you prefer to install manually, pick the archive for your platform from the
-[Releases](releases.md) page and run:
+### macOS / Linux
+
+Download the archive for your platform and architecture and install it:
 
 ```bash
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-# Replace <tag> with the release you want from the Releases page.
-tag=<tag>
+
+# Uses the latest release by default.
+tag=$(curl -fsL https://api.github.com/repos/ckodex/gitlabvalet/releases/latest \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
+
 curl -LO "https://github.com/ckodex/gitlabvalet/releases/download/${tag}/glv_${tag}_${os}_${arch}.tar.gz"
 tar -xzf "glv_${tag}_${os}_${arch}.tar.gz"
 sudo install glv /usr/local/bin/
 ```
 
-## Windows
+### Windows
 
-Download `glv_<tag>_windows_amd64.zip` from the [Releases](releases.md) page,
-extract `glv.exe`, and place it in a directory on your `PATH`.
+Download and install the latest release with PowerShell:
+
+```powershell
+iwr -useb https://ckodex.github.io/gitlabvalet/install.ps1 | iex
+```
+
+Or, if you prefer to install manually, download `glv_<version>_windows_amd64.zip`
+from the [Releases](releases.md) page, extract `glv.exe`, and place it in a
+directory on your `PATH`.
 
 ## First run
 

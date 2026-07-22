@@ -1,31 +1,48 @@
-# ggvalet (`ggvalet`)
+# ggvalet
 
-Your personal multi-instance GitLab agent. Every provider operation produces
-durable intent and outcome receipts in `~/.ggvalet/state.db`. The existing
-JSONL journal remains available for reports and backward compatibility.
+A personal, multi-instance agent for GitLab and (experimental) GitHub. Every
+provider operation produces durable intent and outcome receipts in
+`~/.ggvalet/state.db`; the legacy JSONL journal remains available for reports
+and backward compatibility.
 
-```
-╔═══════════════════════════════════════════════════╗
-║          ggvalet  (MChorfa/ggvalet)       ║
-║  Manage · Record · Report  — never miss a thing  ║
-╚═══════════════════════════════════════════════════╝
-```
+- Latest release: https://github.com/MChorfa/ggvalet/releases/latest
+- Docs site: https://mchorfa.github.io/ggvalet/
 
 Reads your existing **glab CLI config** (`~/.config/glab-cli/config.yml`):
-tokens, `skip_tls_verify`, and `api_host` are all inherited per instance. No
+tokens, `skip_tls_verify`, and `api_host` are inherited per instance. No
 separate setup.
 
 ---
 
 ## Install
 
+### From a release
+
+```bash
+# macOS (Apple Silicon)
+curl -L -o ggvalet.tar.gz https://github.com/MChorfa/ggvalet/releases/latest/download/ggvalet_0.2.1_darwin_arm64.tar.gz
+tar -xzf ggvalet.tar.gz
+mv ggvalet ~/.local/bin/
+
+# Or use the install script
+curl -L https://mchorfa.github.io/ggvalet/install.sh | bash
+```
+
+Replace `darwin_arm64` with `darwin_amd64`, `linux_amd64`, `linux_arm64`, or
+`windows_amd64` as needed. Pre-built binaries, SBOMs, and cosign signatures are
+available on every [release](https://github.com/MChorfa/ggvalet/releases).
+
+### From source
+
 ```bash
 go mod tidy
 make build           # → ./ggvalet
 make install         # → $GOBIN/ggvalet
 make cross           # → dist/ (darwin, linux, windows)
-ggvalet --version        # prints the build tag
+ggvalet --version    # prints the build tag
 ```
+
+---
 
 ### Verify a signed release
 
@@ -35,19 +52,21 @@ Tagged releases ship cross-platform binaries, a `SHA256SUMS`, a CycloneDX SBOM
 ```bash
 sha256sum -c SHA256SUMS                                   # checksums match
 
-RELEASE_PROJECT_URL="https://gitlab.example.com/group/ggvalet"
-RELEASE_TAG="v0.2.0"
-RELEASE_ISSUER="https://gitlab.example.com"
+RELEASE_PROJECT_URL="https://github.com/MChorfa/ggvalet"
+RELEASE_TAG="v0.2.1"
+RELEASE_ISSUER="https://token.actions.githubusercontent.com"
 
 cosign verify-blob SHA256SUMS \
   --signature SHA256SUMS.sig \
   --certificate SHA256SUMS.pem \
-  --certificate-identity "${RELEASE_PROJECT_URL}//.gitlab-ci.yml@refs/tags/${RELEASE_TAG}" \
+  --certificate-identity "${RELEASE_PROJECT_URL}/.github/workflows/release.yml@refs/tags/${RELEASE_TAG}" \
   --certificate-oidc-issuer "${RELEASE_ISSUER}"
 ```
 
 Then confirm the smoke check:
+
 ```bash
+ggvalet doctor
 ggvalet hosts
 ```
 
@@ -56,14 +75,14 @@ ggvalet hosts
 ## Feature map
 
 | Group | Commands |
-|-------|----------|
+|---|---|
 | **CRUD** | `issue`, `epic`, `milestone`, `wi` (work items), `label`, `mr` |
 | **Sync** | `sync issues`, `sync epics`, `sync milestones`, `label sync` |
 | **Intelligence** | `search` (multi-host), `renovate` (triage), `standup` |
 | **Visual** | `tui`, `timeline` (Gantt), `shields` (badges + chips) |
 | **Reporting** | `report`, `report push`, `journal show`, `journal stats`, `receipt export` |
 | **Reconcile** | `plan validate`, `plan diff`, `plan apply`, `plan status`, `plan explain`, `plan resume` |
-| **Ops** | `hosts`, `cache stats`, `cache flush` |
+| **Ops** | `hosts`, `cache stats`, `cache flush`, `doctor` |
 
 ---
 
@@ -72,35 +91,37 @@ ggvalet hosts
 ```bash
 ggvalet hosts                              # list configured instances
 ggvalet issue mine                         # my open issues, default host
-ggvalet --host sc01-trt.thales-systems.ca/gitlab issue mine
+ggvalet --host gitlab.example.com issue mine
 ggvalet tui                                # interactive browser
 ggvalet report --since 7d --author "Name"  # weekly report
 ggvalet standup --since 24h                # daily standup
 ```
 
-See `BUILD_PROMPT.md` for a complete from-scratch build guide, and the
-companion skill (`ggvalet-skill/`) for full command + recipe documentation.
+See the [docs site](https://mchorfa.github.io/ggvalet/) for the full command
+reference and `BUILD_PROMPT.md` for a from-scratch build guide.
 
 ---
 
 ## Architecture
 
-```
-glab config ──► Config.Hosts ──► active client (+ sync client via ForHost)
-                                      │
-            ┌─────────────────────────┼─────────────────────────┐
-     State + receipts             Cache                    Parallel pool
-    (SQLite, authoritative)     (TTL disk)               (bounded goroutines)
-                                      │
-                                  Commands
-                                      │
-       GitLab REST API · plan runs · JSONL export · TUI / reports
-```
+- `cmd/` — Cobra CLI surfaces and host-guard logic.
+- `internal/config` — loads glab config, env overrides, and per-host client config.
+- `internal/provider` — host-neutral `Provider` interface.
+- `internal/provider/gitlab/` — GitLab REST adapter.
+- `internal/provider/github/` — GitHub REST adapter (opt-in, experimental).
+- `internal/observed` — persists intent before each remote call and outcome
+  after; failure to persist intent blocks the call.
+- `internal/state` — SQLite store for receipts and plan runs (authoritative).
+- `internal/journal` — legacy JSONL journal, imported once and kept for reports.
+- `internal/cache` — TTL disk cache for API responses.
+- `internal/plan`, `internal/reconcile` — resumable, idempotent plan engine.
 
-Provider calls route through `internal/observed`, which persists an intent before
+Provider calls route through `internal/observed`, which writes an intent before
 the remote call and an outcome afterward. Failure to persist intent prevents the
 call; failure to persist an outcome marks it uncertain. The legacy journal is
 imported once and remains the report/standup compatibility surface.
+
+---
 
 ## Resumable plans
 
@@ -143,21 +164,9 @@ The codebase exposes a host-neutral `Provider` interface at
 `internal/provider/provider.go`. Adapters implement that interface; the active
 adapter is selected at startup.
 
-```
-                 provider.Provider (interface)
-                        │
-          ┌─────────────┴─────────────┐
-          │                           │
-  internal/provider/gitlab/    internal/provider/github/
-  (GitLab REST adapter)         (GitHub REST adapter — opt-in)
-          │
-     client.New(cfg)
-          │
-     all ggvalet commands
-```
-
-`client.New` selects the adapter via `providerfactory.NewFromConfig`, keyed on
-`GLVALET_PROVIDER` (`gitlab` default, or `github`).
+- `client.New(cfg)` selects the adapter via `providerfactory.NewFromConfig`.
+- `GLVALET_PROVIDER` selects the provider: `gitlab` (default) or `github`.
+- `GLVALET_HOST` scopes commands to a single configured host.
 
 **GitLab adapter** (`internal/provider/gitlab/`) — exercised by every `ggvalet`
 command. The `issue`, `mr`, and `label` surfaces are fully host-neutral; the
@@ -173,12 +182,12 @@ querying GitLab (`cmd/hostguard.go`).
 ### Host-capability matrix
 
 | Command surface | GitLab | GitHub |
-|-----------------|:------:|:------:|
-| `issue` (list/mine/get/create/update/close/comment) | ✅ GA | ✅ (`list --milestone` → unsupported) |
-| `mr` (list/mine/create/approve/merge/diff/close) | ✅ GA | ✅ (`mine`, `approve` → unsupported) |
-| `label` (list/create/sync) | ✅ GA | ✅ |
-| `epic`, group `milestone` | ✅ GA | ⛔ no equivalent |
-| `sync`, `search`, `standup`, `timeline`, `renovate`, `shields`, `tui`, `report` | ✅ GA | ⛔ GitLab-only |
+|---|---|---|
+| `issue` (list/mine/get/create/update/close/comment) | GA | `list --milestone` unsupported |
+| `mr` (list/mine/create/approve/merge/diff/close) | GA | `mine`, `approve` unsupported |
+| `label` (list/create/sync) | GA | GA |
+| `epic`, group `milestone` | GA | no equivalent |
+| `sync`, `search`, `standup`, `timeline`, `renovate`, `shields`, `tui`, `report` | GA | GitLab-only |
 
 "unsupported" returns `provider.ErrUnsupported` (a clear error), never a silent
 fallback. GitHub stays `[S]` experimental until a live-instance integration job
@@ -212,6 +221,14 @@ export GLVALET_GITHUB_URL="https://api.github.com"      # or enterprise base URL
 `GLVALET_PROVIDER` selects the adapter; `GLVALET_GITHUB_ENABLED=true` arms it
 (otherwise `github.New` returns `ErrFeatureDisabled`). See the host-capability
 matrix above for what each surface supports.
+
+---
+
+## Documentation
+
+- [Latest release notes](https://github.com/MChorfa/ggvalet/releases/latest)
+- [Docs site (GitHub Pages)](https://mchorfa.github.io/ggvalet/)
+- `BUILD_PROMPT.md` — from-scratch build guide
 
 ---
 

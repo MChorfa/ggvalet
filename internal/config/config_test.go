@@ -426,6 +426,137 @@ hosts: {}
 	}
 }
 
+func TestLoad_GitHubOnly_WithToken(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "config.yml")
+
+	// No GitLab hosts configured — only GitHub credentials.
+	yaml := `
+hosts: {}
+`
+	if err := os.WriteFile(configFile, []byte(yaml), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	t.Setenv("GLVALET_GLAB_CONFIG", configFile)
+	t.Setenv("GLVALET_PROVIDER", "github")
+	t.Setenv("GLVALET_GITHUB_TOKEN", "ghp-test-token")
+	t.Setenv("GLVALET_GITHUB_URL", "")
+	t.Setenv("GLVALET_TOKEN", "")
+	t.Setenv("GLVALET_GITLAB_URL", "")
+	t.Setenv("GLVALET_HOST", "")
+	t.Setenv("HOME", "/nonexistent")
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	cfg, err := Load(Options{})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Provider != "github" {
+		t.Errorf("Provider = %q, expected %q", cfg.Provider, "github")
+	}
+	if cfg.Host != "github.com" {
+		t.Errorf("Host = %q, expected %q", cfg.Host, "github.com")
+	}
+	if cfg.GitHubToken != "ghp-test-token" {
+		t.Errorf("GitHubToken = %q, expected %q", cfg.GitHubToken, "ghp-test-token")
+	}
+	if cfg.Token != "ghp-test-token" {
+		t.Errorf("Token = %q, expected %q", cfg.Token, "ghp-test-token")
+	}
+	if cfg.GitLabURL != "" {
+		t.Errorf("GitLabURL = %q, expected empty", cfg.GitLabURL)
+	}
+}
+
+func TestLoad_GitHubOnly_EnterpriseURL(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "config.yml")
+
+	yaml := `
+hosts: {}
+`
+	if err := os.WriteFile(configFile, []byte(yaml), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	t.Setenv("GLVALET_GLAB_CONFIG", configFile)
+	t.Setenv("GLVALET_PROVIDER", "github")
+	t.Setenv("GLVALET_GITHUB_TOKEN", "ghp-enterprise")
+	t.Setenv("GLVALET_GITHUB_URL", "https://github.example.com/api/v3")
+	t.Setenv("GLVALET_TOKEN", "")
+	t.Setenv("GLVALET_GITLAB_URL", "")
+	t.Setenv("HOME", "/nonexistent")
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	cfg, err := Load(Options{})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Host != "github.example.com" {
+		t.Errorf("Host = %q, expected %q", cfg.Host, "github.example.com")
+	}
+	if cfg.GitHubURL != "https://github.example.com/api/v3" {
+		t.Errorf("GitHubURL = %q, expected %q", cfg.GitHubURL, "https://github.example.com/api/v3")
+	}
+}
+
+func TestLoad_GitHubOnly_FallbackToGLVALETToken(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "config.yml")
+
+	yaml := `
+hosts: {}
+`
+	if err := os.WriteFile(configFile, []byte(yaml), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	t.Setenv("GLVALET_GLAB_CONFIG", configFile)
+	t.Setenv("GLVALET_PROVIDER", "github")
+	t.Setenv("GLVALET_GITHUB_TOKEN", "")
+	t.Setenv("GLVALET_TOKEN", "ghp-fallback")
+	t.Setenv("GLVALET_GITLAB_URL", "")
+	t.Setenv("HOME", "/nonexistent")
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	cfg, err := Load(Options{})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.GitHubToken != "ghp-fallback" {
+		t.Errorf("GitHubToken = %q, expected %q", cfg.GitHubToken, "ghp-fallback")
+	}
+}
+
+func TestLoad_GitHubOnly_MissingToken(t *testing.T) {
+	dir := t.TempDir()
+	configFile := filepath.Join(dir, "config.yml")
+
+	yaml := `
+hosts: {}
+`
+	if err := os.WriteFile(configFile, []byte(yaml), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	t.Setenv("GLVALET_GLAB_CONFIG", configFile)
+	t.Setenv("GLVALET_PROVIDER", "github")
+	t.Setenv("GLVALET_GITHUB_TOKEN", "")
+	t.Setenv("GLVALET_TOKEN", "")
+	t.Setenv("GLVALET_GITLAB_URL", "")
+	t.Setenv("HOME", "/nonexistent")
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	_, err := Load(Options{})
+	if err == nil {
+		t.Fatal("Load: expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "no GitHub token") {
+		t.Errorf("error = %q, expected to contain 'no GitHub token'", err.Error())
+	}
+}
+
 func TestLoad_UnknownHostError(t *testing.T) {
 	dir := t.TempDir()
 	configFile := filepath.Join(dir, "config.yml")

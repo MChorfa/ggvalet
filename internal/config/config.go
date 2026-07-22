@@ -10,6 +10,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -73,6 +74,10 @@ type Config struct {
 	User      string
 	SkipTLS   bool // from active host's skip_tls_verify
 
+	// Provider names the selected provider implementation: "gitlab" or "github".
+	// Empty defaults to gitlab. Set from GLVALET_PROVIDER.
+	Provider string
+
 	// GitHubURL is the GitHub API base URL. Empty means use api.github.com.
 	// Set to a GitHub Enterprise Server URL (e.g. "https://github.example.com/api/v3")
 	// when targeting an enterprise instance. Read from GLVALET_GITHUB_URL.
@@ -98,6 +103,55 @@ type Options struct {
 	HostFlag string // value of --host / -H flag; empty if not provided
 }
 
+// Provider names used by GLVALET_PROVIDER and Config.Provider.
+const (
+	providerGitLab = "gitlab"
+	providerGitHub = "github"
+)
+
+// providerFromEnv returns the trimmed, lower-cased GLVALET_PROVIDER value.
+// Empty defaults are handled by callers; this only canonicalizes.
+func providerFromEnv() string {
+	return strings.TrimSpace(strings.ToLower(os.Getenv("GLVALET_PROVIDER")))
+}
+
+// loadGitHubConfig builds a Config for the GitHub provider when no GitLab host
+// is required. It still carries the Hosts map so `glv hosts` can display any
+// configured glab instances alongside the GitHub selection.
+func loadGitHubConfig(hosts map[string]*HostConfig, fallbackToken string) (*Config, error) {
+	githubToken := firstNonEmpty(os.Getenv("GLVALET_GITHUB_TOKEN"), fallbackToken)
+	if githubToken == "" {
+		return nil, fmt.Errorf(
+			"no GitHub token — set GLVALET_GITHUB_TOKEN or GLVALET_TOKEN",
+		)
+	}
+
+	githubURL := os.Getenv("GLVALET_GITHUB_URL")
+	host := "github.com"
+	if githubURL != "" {
+		if u, err := url.Parse(githubURL); err == nil && u.Host != "" {
+			host = u.Host
+		}
+	}
+
+	return &Config{
+		Host:        host,
+		Token:       githubToken,
+		User:        "",
+		SkipTLS:     false,
+		Provider:    providerGitHub,
+		GitHubURL:   githubURL,
+		GitHubToken: githubToken,
+
+		JournalPath:    journalPath(),
+		CachePath:      cachePath(),
+		StatePath:      statePath(),
+		DefaultProject: os.Getenv("GLVALET_DEFAULT_PROJECT"),
+		DefaultGroup:   os.Getenv("GLVALET_DEFAULT_GROUP"),
+		Hosts:          hosts,
+	}, nil
+}
+
 // ─── Loader ───────────────────────────────────────────────────────────────────
 
 // Load resolves Config from glab config + env vars + flags.
@@ -115,6 +169,19 @@ func Load(opts Options) (*Config, error) {
 		if _, exists := hosts[key]; !exists {
 			hosts[key] = &HostConfig{Token: envToken, APIProtocol: "https"}
 		}
+	}
+
+	provider := providerFromEnv()
+	if provider == "" {
+		provider = providerGitLab
+	}
+
+	// ── GitHub-only mode ───────────────────────────────────────────────────────
+	// When the user explicitly selects the GitHub provider, we do not require a
+	// GitLab host in glab config. Tokens and URLs come from GLVALET_GITHUB_*
+	// env vars (falling back to GLVALET_TOKEN for backward compatibility).
+	if provider == providerGitHub {
+		return loadGitHubConfig(hosts, envToken)
 	}
 
 	if len(hosts) == 0 {
@@ -163,6 +230,7 @@ func Load(opts Options) (*Config, error) {
 		Token:          token,
 		User:           hcfg.User,
 		SkipTLS:        hcfg.SkipTLS(),
+		Provider:       provider,
 		JournalPath:    journalPath(),
 		CachePath:      cachePath(),
 		StatePath:      statePath(),
@@ -196,6 +264,7 @@ func ForHost(hosts map[string]*HostConfig, hostname, journalPath string) (*Confi
 		Token:       token,
 		User:        hcfg.User,
 		SkipTLS:     hcfg.SkipTLS(),
+		Provider:    providerGitLab,
 		JournalPath: journalPath,
 		CachePath:   cachePath(),
 		StatePath:   statePath(),

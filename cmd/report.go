@@ -4,23 +4,23 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/ckodex/gitlabvalet/internal/client"
 	"github.com/ckodex/gitlabvalet/internal/config"
 	"github.com/ckodex/gitlabvalet/internal/journal"
+	"github.com/ckodex/gitlabvalet/internal/provider"
 	"github.com/ckodex/gitlabvalet/internal/report"
 	"github.com/spf13/cobra"
-	gl "github.com/xanzy/go-gitlab"
 )
 
 func reportCmd() *cobra.Command {
-	var since, format, author, output string
+	var since, until, format, author, output string
 
 	cmd := &cobra.Command{
 		Use:   "report",
 		Short: "Generate a manager-ready activity report from the journal",
 		Example: `  glv report --since 7d                       # print markdown to stdout
+  glv report --since 7d --until 1d            # last week, excluding today
   glv report --since 7d --output weekly.md    # write to file
   glv report --since 30d --format plain       # plain text
   glv report --since 7d --author "Noufel C."  # include your name
@@ -28,13 +28,12 @@ func reportCmd() *cobra.Command {
     --dst-host sc01-trt.thales-systems.ca/gitlab \
     --dst-project management/status-reports   # push as issue`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dur, err := parseDuration(since)
+			sinceTime, untilTime, err := parseTimeRange(since, until)
 			if err != nil {
-				return fmt.Errorf("--since: %w", err)
+				return err
 			}
 
-			sinceTime := time.Now().UTC().Add(-dur)
-			entries, err := glClient.Journal.Query(journal.Filter{Since: sinceTime})
+			entries, err := glClient.Journal.Query(journal.Filter{Since: sinceTime, Until: untilTime})
 			if err != nil {
 				return err
 			}
@@ -46,7 +45,7 @@ func reportCmd() *cobra.Command {
 
 			opts := report.Options{
 				Since:  sinceTime,
-				Until:  time.Now().UTC(),
+				Until:  untilTime,
 				Author: author,
 			}
 			switch format {
@@ -72,7 +71,8 @@ func reportCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&since, "since", "7d", "Time window: 1h, 24h, 7d, 30d, 2w")
+	cmd.Flags().StringVar(&since, "since", "7d", "Start of range (duration ago: 1h, 24h, 7d, 30d, 2w)")
+	cmd.Flags().StringVar(&until, "until", "", "End of range (duration ago, e.g. 1h); defaults to now")
 	cmd.Flags().StringVar(&format, "format", "markdown", "Output format: markdown|plain")
 	cmd.Flags().StringVar(&author, "author", "", "Your name for the report header")
 	cmd.Flags().StringVarP(&output, "output", "o", "", "Write to file instead of stdout")
@@ -84,7 +84,7 @@ func reportCmd() *cobra.Command {
 // reportPushCmd generates a report from the journal and opens it as an issue
 // on any GitLab project — great for posting weekly status to a management board.
 func reportPushCmd() *cobra.Command {
-	var since, author, dstHost, dstProject, title, reportHost string
+	var since, until, author, dstHost, dstProject, title, reportHost string
 
 	cmd := &cobra.Command{
 		Use:   "push",
@@ -111,13 +111,12 @@ func reportPushCmd() *cobra.Command {
 			}
 
 			// ── Build report from journal ────────────────────────────────────
-			dur, err := parseDuration(since)
+			sinceTime, untilTime, err := parseTimeRange(since, until)
 			if err != nil {
-				return fmt.Errorf("--since: %w", err)
+				return err
 			}
-			sinceTime := time.Now().UTC().Add(-dur)
 
-			jFilter := journal.Filter{Since: sinceTime}
+			jFilter := journal.Filter{Since: sinceTime, Until: untilTime}
 			if reportHost != "" {
 				jFilter.Host = reportHost
 			}
@@ -134,7 +133,7 @@ func reportPushCmd() *cobra.Command {
 			var buf strings.Builder
 			report.Generate(&buf, entries, report.Options{
 				Since:  sinceTime,
-				Until:  time.Now().UTC(),
+				Until:  untilTime,
 				Author: author,
 				Format: report.FormatMarkdown,
 			})
@@ -160,10 +159,10 @@ func reportPushCmd() *cobra.Command {
 			// ── Create the issue ─────────────────────────────────────────────
 			info("Pushing report to %s:%s", shortHostname(dstHost), dstProject)
 
-			iss, _, err := dstC.GL.Issues.CreateIssue(dstProject, &gl.CreateIssueOptions{
-				Title:       gl.Ptr(title),
-				Description: gl.Ptr(body),
-				Labels:      &gl.LabelOptions{"report", "status"},
+			iss, err := dstC.Provider.CreateIssue(cmd.Context(), dstProject, provider.CreateIssueOptions{
+				Title:       title,
+				Description: body,
+				Labels:      []string{"report", "status"},
 			})
 			if err != nil {
 				dstC.RecErr(journal.OpCreate, journal.EntityIssue, dstProject, "", err.Error())
@@ -177,7 +176,8 @@ func reportPushCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&since, "since", "7d", "Journal time window: 1h, 24h, 7d, 30d, 2w")
+	cmd.Flags().StringVar(&since, "since", "7d", "Start of range (duration ago: 1h, 24h, 7d, 30d, 2w)")
+	cmd.Flags().StringVar(&until, "until", "", "End of range (duration ago, e.g. 1h); defaults to now")
 	cmd.Flags().StringVar(&author, "author", "", "Author name shown in report header")
 	cmd.Flags().StringVar(&dstHost, "dst-host", "", "Destination hostname (default: active host)")
 	cmd.Flags().StringVar(&dstProject, "dst-project", "", "Destination project path or ID (required)")

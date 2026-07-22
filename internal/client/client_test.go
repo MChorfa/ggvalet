@@ -17,6 +17,7 @@ import (
 	"github.com/ckodex/gitlabvalet/internal/client"
 	"github.com/ckodex/gitlabvalet/internal/config"
 	"github.com/ckodex/gitlabvalet/internal/journal"
+	"github.com/ckodex/gitlabvalet/internal/provider"
 	gl "github.com/xanzy/go-gitlab"
 )
 
@@ -64,6 +65,47 @@ func readJournalAll(t *testing.T, path string) []journal.Entry {
 		t.Fatalf("journal.Query: %v", err)
 	}
 	return entries
+}
+
+// ─── TestClient_New_GitHubOnly_NoGitLabClient ─────────────────────────────────
+
+// TestClient_New_GitHubOnly_NoGitLabClient verifies that when the GitHub
+// provider is selected, client.New skips the go-gitlab client construction
+// entirely and returns a nil GL field, while still producing a working
+// provider and journal/state stores.
+func TestClient_New_GitHubOnly_NoGitLabClient(t *testing.T) {
+	t.Setenv("GLVALET_PROVIDER", "github")
+	t.Setenv("GLVALET_GITHUB_ENABLED", "true")
+
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Host:        "github.com",
+		Token:       "ghp-test-token",
+		Provider:    "github",
+		GitHubToken: "ghp-test-token",
+		JournalPath: filepath.Join(dir, "journal.jsonl"),
+		CachePath:   filepath.Join(dir, "cache"),
+		// Intentionally no GitLabURL — this is the GitHub-only startup case.
+	}
+
+	c, err := client.New(cfg)
+	if err != nil {
+		t.Fatalf("client.New: %v", err)
+	}
+	defer c.Close()
+
+	if c.GL != nil {
+		t.Errorf("GL = %v, expected nil for GitHub-only client", c.GL)
+	}
+	if c.Provider == nil {
+		t.Fatal("Provider is nil; expected a live provider")
+	}
+	if got := c.Provider.Kind(); got != provider.KindGitHub {
+		t.Errorf("Provider.Kind() = %q, expected %q", got, provider.KindGitHub)
+	}
+	if c.State == nil {
+		t.Error("State is nil; expected a live state store")
+	}
 }
 
 // ─── TestClient_ListIssues_RecordsJournalEntry ────────────────────────────────

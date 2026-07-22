@@ -9,13 +9,15 @@ import (
 )
 
 // hostNeutralPrefixes are command subtrees that never issue raw GitLab-SDK
-// calls — they are local-only (journal, cache) or fully Provider-based (plan,
-// wi) and self-guarding — so every leaf under them is safe under any host.
+// calls — they are local-only (journal, cache), fully Provider-based (issue,
+// mr, label, plan), or local-only report generation — so every leaf under them
+// is safe under any host unless explicitly listed in hostBlockedLeaves.
 var hostNeutralPrefixes = []string{
 	"glv hosts", "glv completion",
 	"glv journal", "glv cache",
 	"glv receipt",
-	"glv plan", "glv wi",
+	"glv plan",
+	"glv report",
 	"glv issue", // fully migrated to client.Provider (P8/P13/P16)
 	"glv mr",    // fully migrated to client.Provider (P10/P14/P15)
 	"glv label", // fully migrated to client.Provider (P9/P16)
@@ -30,6 +32,11 @@ var hostNeutralLeaves = map[string]bool{
 	"glv": true, // root help / usage
 }
 
+// hostBlockedLeaves are leaves under a host-neutral prefix that still issue raw
+// GitLab-SDK calls. They override the prefix allowlist. Add entries here as
+// migration uncovers leaves that are not yet provider-based.
+var hostBlockedLeaves = map[string]bool{}
+
 // ensureHostNeutral fails loud when a command that still uses the raw GitLab
 // SDK (client.GL) is run under a non-GitLab provider, instead of silently
 // querying GitLab with GitLab credentials. This makes the GitHub host's
@@ -43,6 +50,9 @@ func ensureHostNeutral(cmd *cobra.Command, kind provider.Kind) error {
 		return nil // raw GitLab-SDK calls are native on a GitLab host
 	}
 	path := cmd.CommandPath()
+	if hostBlockedLeaves[path] {
+		return blockedError(path, kind)
+	}
 	if hostNeutralLeaves[path] {
 		return nil
 	}
@@ -51,10 +61,14 @@ func ensureHostNeutral(cmd *cobra.Command, kind provider.Kind) error {
 			return nil
 		}
 	}
+	return blockedError(path, kind)
+}
+
+func blockedError(path string, kind provider.Kind) error {
 	return fmt.Errorf(
 		"command %q is not yet host-neutral; %s support is [S] experimental.\n"+
 			"  host-neutral commands: issue create|update|close|comment, label list|create, "+
-			"mr create|close, and all plan/wi/journal/cache commands.\n"+
+			"mr create|close, report, and all plan/journal/cache commands.\n"+
 			"  set GLVALET_PROVIDER=gitlab (or unset it) to run this command against GitLab",
 		path, kind)
 }

@@ -35,22 +35,12 @@ func journalShowCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			f := journal.Filter{}
 
-			if since != "" {
-				d, err := parseDuration(since)
-				if err != nil {
-					return err
-				}
-				f.Since = time.Now().UTC().Add(-d)
-			} else {
-				f.Since = time.Now().UTC().Add(-24 * time.Hour)
+			sinceTime, untilTime, err := parseTimeRange(since, until)
+			if err != nil {
+				return err
 			}
-			if until != "" {
-				d, err := parseDuration(until)
-				if err != nil {
-					return err
-				}
-				f.Until = time.Now().UTC().Add(-d)
-			}
+			f.Since = sinceTime
+			f.Until = untilTime
 			if entity != "" {
 				f.Entities = []journal.Entity{journal.Entity(entity)}
 			}
@@ -126,18 +116,18 @@ func journalShowCmd() *cobra.Command {
 }
 
 func journalStatsCmd() *cobra.Command {
-	var since, host string
+	var since, until, host string
 
 	cmd := &cobra.Command{
 		Use:   "stats",
 		Short: "Show operation stats for a time window",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dur, err := parseDuration(since)
+			sinceTime, untilTime, err := parseTimeRange(since, until)
 			if err != nil {
 				return err
 			}
 
-			f := journal.Filter{Since: time.Now().UTC().Add(-dur)}
+			f := journal.Filter{Since: sinceTime, Until: untilTime}
 			if host != "" {
 				f.Host = host
 			}
@@ -149,7 +139,11 @@ func journalStatsCmd() *cobra.Command {
 
 			stats := journal.ComputeStats(entries)
 
-			fmt.Printf("\n%s\n", colorInfo("Activity stats — "+since))
+			rangeLabel := since
+			if until != "" {
+				rangeLabel += " → " + until
+			}
+			fmt.Printf("\n%s\n", colorInfo("Activity stats — "+rangeLabel))
 			fmt.Printf("  Total  : %d  |  Errors: %d\n\n", stats.Total, stats.Errors)
 
 			if len(stats.ByHost) > 1 {
@@ -175,6 +169,7 @@ func journalStatsCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&since, "since", "7d", "Duration: 1h, 24h, 7d, 30d")
+	cmd.Flags().StringVar(&until, "until", "", "End of range (duration ago, e.g. 1h)")
 	cmd.Flags().StringVar(&host, "host", "", "Scope stats to one GitLab instance")
 	return cmd
 }
@@ -194,6 +189,31 @@ func parseDuration(s string) (time.Duration, error) {
 		return time.Duration(weeks) * 7 * 24 * time.Hour, nil
 	}
 	return time.ParseDuration(s)
+}
+
+// parseTimeRange converts --since and optional --until (both durations ago)
+// into absolute timestamps. Empty until defaults to now. It errors if the
+// implied window is inverted (until before since).
+func parseTimeRange(since, until string) (time.Time, time.Time, error) {
+	now := time.Now().UTC()
+	sinceDur, err := parseDuration(since)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("--since: %w", err)
+	}
+	sinceTime := now.Add(-sinceDur)
+
+	untilTime := now
+	if until != "" {
+		untilDur, err := parseDuration(until)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("--until: %w", err)
+		}
+		untilTime = now.Add(-untilDur)
+	}
+	if untilTime.Before(sinceTime) {
+		return time.Time{}, time.Time{}, fmt.Errorf("--until (%s) is before --since (%s)", untilTime.Format(time.RFC3339), sinceTime.Format(time.RFC3339))
+	}
+	return sinceTime, untilTime, nil
 }
 
 // shortHostname returns a display-friendly version of a long hostname key.

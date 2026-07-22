@@ -54,31 +54,35 @@ func New(cfg *config.Config) (*Client, error) {
 		return nil, fmt.Errorf("client: import legacy journal: %w", err)
 	}
 
-	baseTransport := http.DefaultTransport.(*http.Transport).Clone()
-	if cfg.SkipTLS {
-		baseTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec
-	}
-	httpClient := &http.Client{Transport: &observed.Transport{
-		Base: baseTransport, Store: stateStore, Provider: "gitlab", Host: cfg.Host,
-	}}
-
-	glc, err := gl.NewClient(cfg.Token,
-		gl.WithBaseURL(cfg.GitLabURL),
-		gl.WithHTTPClient(httpClient),
-	)
-	if err != nil {
-		stateStore.Close()
-		return nil, fmt.Errorf("gitlab client init: %w", err)
-	}
-
-	// Select the provider implementation from GLVALET_PROVIDER (gitlab|github);
-	// defaults to GitLab. This is what makes non-GitLab hosts reachable.
+	// Select the provider implementation from cfg.Provider / GLVALET_PROVIDER
+	// (gitlab|github); defaults to GitLab. This must happen before the raw
+	// GitLab SDK is constructed so we can skip it entirely when GitHub is active.
 	prov, err := providerfactory.NewFromConfig(cfg)
 	if err != nil {
 		stateStore.Close()
 		return nil, fmt.Errorf("client: build provider: %w", err)
 	}
 	prov = observed.NewProvider(prov, stateStore, cfg.Host)
+
+	var glc *gl.Client
+	if cfg.Provider != "github" {
+		baseTransport := http.DefaultTransport.(*http.Transport).Clone()
+		if cfg.SkipTLS {
+			baseTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec
+		}
+		httpClient := &http.Client{Transport: &observed.Transport{
+			Base: baseTransport, Store: stateStore, Provider: "gitlab", Host: cfg.Host,
+		}}
+
+		glc, err = gl.NewClient(cfg.Token,
+			gl.WithBaseURL(cfg.GitLabURL),
+			gl.WithHTTPClient(httpClient),
+		)
+		if err != nil {
+			stateStore.Close()
+			return nil, fmt.Errorf("gitlab client init: %w", err)
+		}
+	}
 
 	return &Client{GL: glc, Provider: prov, Journal: j, Cache: c, State: stateStore, cfg: cfg}, nil
 }

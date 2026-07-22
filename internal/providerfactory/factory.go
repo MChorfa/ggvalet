@@ -12,13 +12,16 @@ import (
 	"github.com/ckodex/gitlabvalet/internal/provider/gitlab"
 )
 
-// NewFromConfig constructs a provider.Provider based on GLVALET_PROVIDER.
+// NewFromConfig constructs a provider.Provider based on cfg.Provider, falling
+// back to the GLVALET_PROVIDER environment variable.
 // "" or "gitlab" → GitLab provider.
 // "github" → GitHub provider (propagates github.ErrFeatureDisabled if disabled).
 // Any other value → error with helpful message.
 func NewFromConfig(cfg *config.Config) (provider.Provider, error) {
-	v := os.Getenv("GLVALET_PROVIDER")
-	v = strings.TrimSpace(strings.ToLower(v))
+	v := strings.TrimSpace(strings.ToLower(cfg.Provider))
+	if v == "" {
+		v = strings.TrimSpace(strings.ToLower(os.Getenv("GLVALET_PROVIDER")))
+	}
 
 	switch v {
 	case "", "gitlab":
@@ -26,6 +29,6 @@ func NewFromConfig(cfg *config.Config) (provider.Provider, error) {
 	case "github":
 		return github.New(cfg)
 	default:
-		return nil, fmt.Errorf("providerfactory: unknown GLVALET_PROVIDER=%q (want gitlab|github)", v)
+		return nil, fmt.Errorf("providerfactory: unknown provider=%q (want gitlab|github)", v)
 	}
 }

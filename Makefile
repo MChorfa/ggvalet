@@ -53,9 +53,11 @@ tidy:
 	go mod tidy
 
 clean:
-	rm -f $(BINARY)
+	rm -f $(BINARY) gitlabvalet
 	rm -rf dist/ site/ public/
 	rm -f sbom.cdx.json
+	rm -f cover.out coverage.txt p19-cover.out p19-coverage.txt
+	rm -f *.test *.out cmd.out
 
 # Cross-compile for common platforms
 cross:

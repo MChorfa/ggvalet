@@ -1,9 +1,17 @@
 # Binaries
 glv
 /glv
+gitlabvalet
+/gitlabvalet
 *.exe
 *.test
 *.out
+
+# Coverage profiles (produced by `make cover` / CI; never commit)
+cover.out
+coverage.txt
+p19-cover.out
+p19-coverage.txt
 
 # Go
 vendor/

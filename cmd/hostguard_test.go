@@ -25,7 +25,11 @@ func buildTree() *cobra.Command {
 	epic := &cobra.Command{Use: "epic"} // GitLab-only → blocked off GitLab
 	epic.AddCommand(&cobra.Command{Use: "list"})
 	sync := &cobra.Command{Use: "sync"} // raw GL → blocked off GitLab
-	root.AddCommand(issue, mr, journal, epic, sync)
+	wi := &cobra.Command{Use: "wi"}     // raw GitLab HTTP → blocked off GitLab
+	wi.AddCommand(&cobra.Command{Use: "list"})
+	report := &cobra.Command{Use: "report"}
+	report.AddCommand(&cobra.Command{Use: "push"})
+	root.AddCommand(issue, mr, journal, epic, sync, wi, report)
 	return root
 }
 
@@ -58,7 +62,7 @@ func TestEnsureHostNeutral_NonGitLab_BlocksRawSDKCommands(t *testing.T) {
 	// The reason this matters: under GLVALET_PROVIDER=github a raw-GL command
 	// would otherwise silently hit GitLab. It MUST fail loud instead.
 	root := buildTree()
-	for _, path := range []string{"glv sync", "glv epic list"} {
+	for _, path := range []string{"glv sync", "glv epic list", "glv wi list"} {
 		err := ensureHostNeutral(find(t, root, path), provider.KindGitHub)
 		if err == nil {
 			t.Errorf("KindGitHub silently allowed not-yet-migrated %q", path)
@@ -71,10 +75,10 @@ func TestEnsureHostNeutral_NonGitLab_BlocksRawSDKCommands(t *testing.T) {
 }
 
 func TestEnsureHostNeutral_NonGitLab_AllowsMigratedAndNeutral(t *testing.T) {
-	// Migrated leaves (issue create, mr close) and fully-neutral subtrees
-	// (journal) work on any host.
+	// Migrated leaves (issue create, mr close), fully-neutral subtrees
+	// (journal), and host-neutral report/report push work on any host.
 	root := buildTree()
-	for _, path := range []string{"glv issue list", "glv issue create", "glv mr merge", "glv mr close", "glv journal show"} {
+	for _, path := range []string{"glv issue list", "glv issue create", "glv mr merge", "glv mr close", "glv journal show", "glv report", "glv report push"} {
 		if err := ensureHostNeutral(find(t, root, path), provider.KindGitHub); err != nil {
 			t.Errorf("KindGitHub blocked host-neutral %q: %v", path, err)
 		}

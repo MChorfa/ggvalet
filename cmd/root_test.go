@@ -13,7 +13,7 @@ func TestExecuteVersion(t *testing.T) {
 func TestLoadHostsForDisplay(t *testing.T) {
 	t.Setenv("GLVALET_TOKEN", "test-token")
 	t.Setenv("GLVALET_GITLAB_URL", "https://gitlab.example.com")
-	hosts, defaultHost, err := loadHostsForDisplay()
+	hosts, defaultHost, provider, err := loadHostsForDisplay()
 	if err != nil {
 		t.Fatalf("loadHostsForDisplay: %v", err)
 	}
@@ -22,5 +22,8 @@ func TestLoadHostsForDisplay(t *testing.T) {
 	}
 	if defaultHost == "" {
 		t.Fatal("expected default host")
+	}
+	if provider == "" {
+		t.Fatal("expected provider to be set")
 	}
 }

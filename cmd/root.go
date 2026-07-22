@@ -98,6 +98,7 @@ func Execute(version string) {
 		cacheCmd(),
 		receiptCmd(),
 		planCmd(),
+		doctorCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -111,17 +112,32 @@ func Execute(version string) {
 func hostsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "hosts",
-		Short: "List all GitLab instances from glab config",
+		Short: "List configured hosts and the active provider",
 		// Override PersistentPreRunE: we enumerate hosts without needing an
 		// active client (useful when a token is temporarily empty).
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error { return nil },
 		RunE: func(cmd *cobra.Command, args []string) error {
-			hosts, defaultHost, err := loadHostsForDisplay()
+			hosts, defaultHost, provider, err := loadHostsForDisplay()
 			if err != nil {
 				return err
 			}
+
+			// Print a provider-aware header first; this makes GitHub-mode users
+			// realize why GLVALET_HOST is not the active selector.
+			if provider == "github" {
+				fmt.Println(colorOK("✓ Active provider: github") + "  " + defaultHost)
+				if len(hosts) > 0 {
+					fmt.Println(colorDim("\nGitLab destinations (used by report push, sync, etc.):"))
+				}
+			} else if provider == "gitlab" {
+				fmt.Println(colorOK("✓ Active provider: gitlab") + "  " + defaultHost)
+			}
+
 			if len(hosts) == 0 {
-				fmt.Println(colorDim("No hosts configured. Run: glab auth login"))
+				fmt.Println(colorDim("No GitLab hosts configured. Run: glab auth login"))
+				if provider == "github" {
+					printGitHubHints()
+				}
 				return nil
 			}
 
@@ -157,31 +173,51 @@ func hostsCmd() *cobra.Command {
 			}
 			table.Render()
 
-			fmt.Printf("\n%s  glv --host <hostname> <command>\n",
-				colorDim("To switch:"))
-			fmt.Printf("%s  export GLVALET_HOST=%s\n\n",
-				colorDim("Persistent:"), defaultHost)
+			if provider == "github" {
+				printGitHubHints()
+			} else {
+				fmt.Printf("\n%s  glv --host <hostname> <command>\n",
+					colorDim("To switch:"))
+				fmt.Printf("%s  export GLVALET_HOST=%s\n\n",
+					colorDim("Persistent:"), defaultHost)
+			}
 			return nil
 		},
 	}
 }
 
+// printGitHubHints prints host-switching guidance for the GitHub provider.
+func printGitHubHints() {
+	fmt.Println(colorDim("\nTo keep using GitHub:"))
+	fmt.Println("  export GLVALET_PROVIDER=github")
+	fmt.Println("  export GLVALET_GITHUB_TOKEN=<token>")
+	fmt.Println(colorDim("\nTo switch to a GitLab host:"))
+	fmt.Println("  unset GLVALET_PROVIDER   # or set GLVALET_PROVIDER=gitlab")
+	fmt.Printf("  %s\n\n", colorDim("export GLVALET_HOST=<hostname>"))
+}
+
 // loadHostsForDisplay calls config internals without requiring a valid token.
-// It loads the glab file and returns the raw host map + default host string.
-func loadHostsForDisplay() (map[string]*config.HostConfig, string, error) {
-	// Use Load with no host flag; if it fails due to empty token, we still
+// It loads the glab file and returns the raw host map + default host string +
+// active provider.
+func loadHostsForDisplay() (map[string]*config.HostConfig, string, string, error) {
+	provider := strings.TrimSpace(strings.ToLower(os.Getenv("GLVALET_PROVIDER")))
+	// Use Load with no host flag; if it fails due to an empty token, we still
 	// want to show the host list. Peek at the map directly.
 	c, err := config.Load(config.Options{HostFlag: hostFlag})
 	if err != nil {
-		// Try extracting hosts from error context — not possible with current
-		// API, so surface the error but with a helpful hint.
-		hint := strings.Contains(err.Error(), "no token")
-		if hint {
-			return nil, "", fmt.Errorf("%w\n  hint: set token with `glab auth login` or GLVALET_TOKEN", err)
+		// Surface the error with a provider-aware hint.
+		switch {
+		case strings.Contains(err.Error(), "no GitHub token"):
+			return nil, "", provider, fmt.Errorf("%w\n  hint: set GLVALET_GITHUB_TOKEN (or GLVALET_TOKEN)", err)
+		case strings.Contains(err.Error(), "no token"):
+			return nil, "", provider, fmt.Errorf("%w\n  hint: set token with `glab auth login` or GLVALET_TOKEN", err)
 		}
-		return nil, "", err
+		return nil, "", provider, err
 	}
-	return c.Hosts, c.Host, nil
+	if c.Provider != "" {
+		provider = c.Provider
+	}
+	return c.Hosts, c.Host, provider, nil
 }
 
 // ─── Shared output helpers ────────────────────────────────────────────────────

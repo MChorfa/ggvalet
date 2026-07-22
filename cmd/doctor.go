@@ -22,10 +22,10 @@ func doctorCmd() *cobra.Command {
 		Long: `Diagnose the ggvalet environment.
 
 Checks performed:
-  1. Configuration loads (glab config + env + flags).
+  1. Configuration loads (glab/tea config + env + flags).
   2. State database (~/.ggvalet/state.db) is writable.
   3. Journal file (~/.ggvalet/journal.jsonl) is writable.
-  4. Provider builds (gitlab or github).
+  4. Provider builds (gitlab, github, or gitea).
   5. One lightweight API call confirms the token is accepted by the host.
 
 This command never writes to the journal or creates remote resources.`,
@@ -50,6 +50,8 @@ func runDoctor() error {
 		switch providerHint() {
 		case "github":
 			info("hint: set GLVALET_GITHUB_TOKEN (or GLVALET_TOKEN) and GLVALET_GITHUB_ENABLED=true")
+		case "gitea":
+			info("hint: run `tea login add` or set GLVALET_TOKEN + GLVALET_GITEA_URL")
 		default:
 			info("hint: run `glab auth login` or set GLVALET_TOKEN + GLVALET_GITLAB_URL")
 		}

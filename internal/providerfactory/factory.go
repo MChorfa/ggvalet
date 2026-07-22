@@ -8,6 +8,7 @@ import (
 
 	"github.com/MChorfa/ggvalet/internal/config"
 	"github.com/MChorfa/ggvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/provider/gitea"
 	"github.com/MChorfa/ggvalet/internal/provider/github"
 	"github.com/MChorfa/ggvalet/internal/provider/gitlab"
 )
@@ -16,6 +17,7 @@ import (
 // back to the GLVALET_PROVIDER environment variable.
 // "" or "gitlab" → GitLab provider.
 // "github" → GitHub provider (propagates github.ErrFeatureDisabled if disabled).
+// "gitea" → Gitea provider.
 // Any other value → error with helpful message.
 func NewFromConfig(cfg *config.Config) (provider.Provider, error) {
 	v := strings.TrimSpace(strings.ToLower(cfg.Provider))
@@ -28,7 +30,9 @@ func NewFromConfig(cfg *config.Config) (provider.Provider, error) {
 		return gitlab.New(cfg)
 	case "github":
 		return github.New(cfg)
+	case "gitea":
+		return gitea.New(cfg)
 	default:
-		return nil, fmt.Errorf("providerfactory: unknown provider=%q (want gitlab|github)", v)
+		return nil, fmt.Errorf("providerfactory: unknown provider=%q (want gitlab|github|gitea)", v)
 	}
 }

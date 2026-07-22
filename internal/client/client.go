@@ -65,7 +65,7 @@ func New(cfg *config.Config) (*Client, error) {
 	prov = observed.NewProvider(prov, stateStore, cfg.Host)
 
 	var glc *gl.Client
-	if cfg.Provider != "github" {
+	if cfg.Provider == "gitlab" || cfg.Provider == "" {
 		baseTransport := http.DefaultTransport.(*http.Transport).Clone()
 		if cfg.SkipTLS {
 			baseTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec

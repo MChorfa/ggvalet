@@ -4,7 +4,8 @@
 //  1. --host flag
 //  2. GLVALET_HOST env var
 //  3. top-level "host:" field in glab config (~/.config/glab-cli/config.yml)
-//  4. GLVALET_GITLAB_URL env var (stripped of scheme → hostname)
+//     or default login in tea config (~/.config/tea/config.yml)
+//  4. GLVALET_GITLAB_URL / GLVALET_GITEA_URL env var (stripped of scheme → hostname)
 //  5. First host alphabetically in the hosts map
 package config
 
@@ -15,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -24,6 +26,8 @@ import (
 
 // HostConfig mirrors the per-host block in glab's config.yml exactly.
 // Unknown fields are silently ignored (container_registry_domains, etc.).
+// The Provider field is not serialized; it records which provider a host
+// belongs to (gitlab or gitea) after loading.
 type HostConfig struct {
 	Token       string `yaml:"token"`
 	User        string `yaml:"user"`
@@ -33,6 +37,8 @@ type HostConfig struct {
 	APIHost string `yaml:"api_host"`
 	// glab stores this as the string "true" / "false", not a YAML boolean.
 	SkipTLSVerify string `yaml:"skip_tls_verify"`
+	// Provider records which provider this host belongs to (gitlab or gitea).
+	Provider string `yaml:"-"`
 }
 
 // SkipTLS returns true when skip_tls_verify is set to "true" (case-insensitive).
@@ -74,7 +80,7 @@ type Config struct {
 	User      string
 	SkipTLS   bool // from active host's skip_tls_verify
 
-	// Provider names the selected provider implementation: "gitlab" or "github".
+	// Provider names the selected provider implementation: "gitlab", "github", or "gitea".
 	// Empty defaults to gitlab. Set from GLVALET_PROVIDER.
 	Provider string
 
@@ -86,13 +92,18 @@ type Config struct {
 	// Read from GLVALET_GITHUB_TOKEN. Falls back to Token when empty.
 	GitHubToken string
 
+	// GiteaURL is the Gitea API base URL. Set from tea login config when the
+	// active provider is "gitea". Falls back to GLVALET_GITEA_URL.
+	GiteaURL string
+
 	JournalPath    string
 	CachePath      string
 	StatePath      string
 	DefaultProject string
 	DefaultGroup   string
 
-	// All hosts loaded from glab config — used by `ggvalet hosts` and flag validation.
+	// All hosts loaded from the active provider's config (glab or tea).
+	// Used by `ggvalet hosts` and cross-instance commands like report push.
 	Hosts map[string]*HostConfig
 }
 
@@ -105,8 +116,9 @@ type Options struct {
 
 // Provider names used by GLVALET_PROVIDER and Config.Provider.
 const (
-	providerGitLab = "gitlab"
-	providerGitHub = "github"
+	providerGitLab  = "gitlab"
+	providerGitHub  = "github"
+	providerGitea   = "gitea"
 )
 
 // providerFromEnv returns the trimmed, lower-cased GLVALET_PROVIDER value.
@@ -154,8 +166,30 @@ func loadGitHubConfig(hosts map[string]*HostConfig, fallbackToken string) (*Conf
 
 // ─── Loader ───────────────────────────────────────────────────────────────────
 
-// Load resolves Config from glab config + env vars + flags.
+// Load resolves Config from glab/tea config + env vars + flags.
 func Load(opts Options) (*Config, error) {
+	envToken := os.Getenv("GLVALET_TOKEN")
+	provider := providerFromEnv()
+	if provider == "" {
+		provider = providerGitLab
+	}
+
+	switch provider {
+	case providerGitHub:
+		hosts, _, _ := loadGlabHosts()
+		if hosts == nil {
+			hosts = make(map[string]*HostConfig)
+		}
+		return loadGitHubConfig(hosts, envToken)
+	case providerGitea:
+		return loadGiteaConfig(opts, envToken)
+	default:
+		return loadGitLabConfig(opts, envToken)
+	}
+}
+
+// loadGitLabConfig builds a Config for the GitLab provider.
+func loadGitLabConfig(opts Options, envToken string) (*Config, error) {
 	hosts, glabDefault, err := loadGlabHosts()
 	if err != nil {
 		hosts = make(map[string]*HostConfig)
@@ -163,25 +197,11 @@ func Load(opts Options) (*Config, error) {
 
 	// Merge a token-only env override so it appears in Hosts.
 	envURL := os.Getenv("GLVALET_GITLAB_URL")
-	envToken := os.Getenv("GLVALET_TOKEN")
 	if envToken != "" && envURL != "" {
 		key := stripScheme(envURL)
 		if _, exists := hosts[key]; !exists {
-			hosts[key] = &HostConfig{Token: envToken, APIProtocol: "https"}
+			hosts[key] = &HostConfig{Token: envToken, APIProtocol: "https", Provider: providerGitLab}
 		}
-	}
-
-	provider := providerFromEnv()
-	if provider == "" {
-		provider = providerGitLab
-	}
-
-	// ── GitHub-only mode ───────────────────────────────────────────────────────
-	// When the user explicitly selects the GitHub provider, we do not require a
-	// GitLab host in glab config. Tokens and URLs come from GLVALET_GITHUB_*
-	// env vars (falling back to GLVALET_TOKEN for backward compatibility).
-	if provider == providerGitHub {
-		return loadGitHubConfig(hosts, envToken)
 	}
 
 	if len(hosts) == 0 {
@@ -190,15 +210,14 @@ func Load(opts Options) (*Config, error) {
 		)
 	}
 
-	// ── Select active host (first match wins) ─────────────────────────────────
 	active := firstNonEmpty(
-		opts.HostFlag,             // 1. --host flag
-		os.Getenv("GLVALET_HOST"), // 2. env override
-		glabDefault,               // 3. glab top-level "host:" field
-		stripScheme(envURL),       // 4. GLVALET_GITLAB_URL env
+		opts.HostFlag,
+		os.Getenv("GLVALET_HOST"),
+		glabDefault,
+		stripScheme(envURL),
 	)
 	if active == "" {
-		active = sortedKeys(hosts)[0] // 5. alphabetical fallback
+		active = sortedKeys(hosts)[0]
 	}
 
 	hcfg, ok := hosts[active]
@@ -210,8 +229,6 @@ func Load(opts Options) (*Config, error) {
 		)
 	}
 
-	// Allow GLVALET_TOKEN to backfill a host whose token is empty in the config
-	// (e.g. when the config file shows an empty token field).
 	token := hcfg.Token
 	if token == "" {
 		token = envToken
@@ -230,7 +247,80 @@ func Load(opts Options) (*Config, error) {
 		Token:          token,
 		User:           hcfg.User,
 		SkipTLS:        hcfg.SkipTLS(),
-		Provider:       provider,
+		Provider:       providerGitLab,
+		JournalPath:    journalPath(),
+		CachePath:      cachePath(),
+		StatePath:      statePath(),
+		DefaultProject: os.Getenv("GLVALET_DEFAULT_PROJECT"),
+		DefaultGroup:   os.Getenv("GLVALET_DEFAULT_GROUP"),
+		Hosts:          hosts,
+	}, nil
+}
+
+// loadGiteaConfig builds a Config for the Gitea provider from tea logins.
+func loadGiteaConfig(opts Options, envToken string) (*Config, error) {
+	hosts, teaDefault, err := loadTeaHosts()
+	if err != nil {
+		hosts = make(map[string]*HostConfig)
+	}
+
+	envURL := firstNonEmpty(os.Getenv("GLVALET_GITEA_URL"), os.Getenv("GLVALET_GITLAB_URL"))
+	if envToken != "" && envURL != "" {
+		key := stripScheme(envURL)
+		if _, exists := hosts[key]; !exists {
+			hosts[key] = &HostConfig{
+				Token:       envToken,
+				APIProtocol: "https",
+				APIHost:     stripScheme(envURL),
+				Provider:    providerGitea,
+			}
+		}
+	}
+
+	if len(hosts) == 0 {
+		return nil, fmt.Errorf(
+			"no Gitea logins found — run `tea login add` or set GLVALET_TOKEN + GLVALET_GITEA_URL",
+		)
+	}
+
+	active := firstNonEmpty(
+		opts.HostFlag,
+		os.Getenv("GLVALET_HOST"),
+		teaDefault,
+		stripScheme(envURL),
+	)
+	if active == "" {
+		active = sortedKeys(hosts)[0]
+	}
+
+	hcfg, ok := hosts[active]
+	if !ok {
+		return nil, fmt.Errorf(
+			"host %q not in tea config — available: %s\n"+
+				"  hint: run `tea login add --name %s`",
+			active, strings.Join(sortedKeys(hosts), ", "), active,
+		)
+	}
+
+	token := hcfg.Token
+	if token == "" {
+		token = envToken
+	}
+	if token == "" {
+		return nil, fmt.Errorf(
+			"no token for host %q\n"+
+				"  hint: run `tea login add --name %s` or set GLVALET_TOKEN",
+			active, active,
+		)
+	}
+
+	return &Config{
+		Host:           active,
+		GiteaURL:       hcfg.APIURL(active),
+		Token:          token,
+		User:           hcfg.User,
+		SkipTLS:        hcfg.SkipTLS(),
+		Provider:       providerGitea,
 		JournalPath:    journalPath(),
 		CachePath:      cachePath(),
 		StatePath:      statePath(),
@@ -241,12 +331,13 @@ func Load(opts Options) (*Config, error) {
 }
 
 // ForHost constructs a Config for a specific hostname from an already-loaded
-// hosts map. Used by sync commands that need two independent clients.
+// hosts map. Used by cross-instance commands (report push, sync) that need an
+// independent client. The returned Config preserves the host's provider.
 func ForHost(hosts map[string]*HostConfig, hostname, journalPath string) (*Config, error) {
 	hcfg, ok := hosts[hostname]
 	if !ok {
 		return nil, fmt.Errorf(
-			"host %q not in glab config — available: %s",
+			"host %q not in config — available: %s",
 			hostname, strings.Join(sortedKeys(hosts), ", "),
 		)
 	}
@@ -255,21 +346,31 @@ func ForHost(hosts map[string]*HostConfig, hostname, journalPath string) (*Confi
 		token = os.Getenv("GLVALET_TOKEN")
 	}
 	if token == "" {
-		return nil, fmt.Errorf("no token for host %q — run `glab auth login --hostname %s`",
-			hostname, hostname)
+		return nil, fmt.Errorf("no token for host %q", hostname)
 	}
-	return &Config{
+
+	provider := hcfg.Provider
+	if provider == "" {
+		provider = providerGitLab
+	}
+
+	cfg := &Config{
 		Host:        hostname,
-		GitLabURL:   hcfg.APIURL(hostname),
 		Token:       token,
 		User:        hcfg.User,
 		SkipTLS:     hcfg.SkipTLS(),
-		Provider:    providerGitLab,
+		Provider:    provider,
 		JournalPath: journalPath,
 		CachePath:   cachePath(),
 		StatePath:   statePath(),
 		Hosts:       hosts,
-	}, nil
+	}
+	if provider == providerGitea {
+		cfg.GiteaURL = hcfg.APIURL(hostname)
+	} else {
+		cfg.GitLabURL = hcfg.APIURL(hostname)
+	}
+	return cfg, nil
 }
 
 // ─── glab config parser ───────────────────────────────────────────────────────
@@ -304,6 +405,7 @@ func loadGlabHosts() (map[string]*HostConfig, string, error) {
 
 		for hostname, hc := range fc.Hosts {
 			if _, exists := merged[hostname]; !exists {
+				hc.Provider = providerGitLab
 				merged[hostname] = hc
 			}
 		}
@@ -324,6 +426,7 @@ func loadGlabHosts() (map[string]*HostConfig, string, error) {
 		}
 		for hostname, hc := range hostsOnly {
 			if _, exists := merged[hostname]; !exists {
+				hc.Provider = providerGitLab
 				merged[hostname] = hc
 			}
 		}
@@ -367,6 +470,120 @@ func glabConfigDirs() []string {
 	// Escape hatch: GLVALET_GLAB_CONFIG points to the config file directly.
 	if custom := os.Getenv("GLVALET_GLAB_CONFIG"); custom != "" {
 		dirs = append([]string{filepath.Dir(custom)}, dirs...)
+	}
+
+	return dirs
+}
+
+// ─── tea config parser ────────────────────────────────────────────────────────
+
+// teaLogin mirrors the per-login block in tea's config.yml.
+type teaLogin struct {
+	Name     string `yaml:"name"`
+	URL      string `yaml:"url"`
+	Token    string `yaml:"token"`
+	Default  bool   `yaml:"default"`
+	User     string `yaml:"user"`
+	Insecure bool   `yaml:"insecure"`
+}
+
+// teaFileConfig is the shape of ~/.config/tea/config.yml.
+type teaFileConfig struct {
+	Logins []teaLogin `yaml:"logins"`
+}
+
+// loadTeaHosts reads tea config locations in priority order, merges all
+// logins (first-wins by name), and returns the default login name.
+func loadTeaHosts() (map[string]*HostConfig, string, error) {
+	merged := make(map[string]*HostConfig)
+	defaultHost := ""
+	var lastErr error
+
+	for _, path := range teaConfigPaths() {
+		data, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		var fc teaFileConfig
+		if err := yaml.Unmarshal(data, &fc); err != nil {
+			lastErr = fmt.Errorf("parse %s: %w", path, err)
+			continue
+		}
+
+		for _, login := range fc.Logins {
+			if _, exists := merged[login.Name]; !exists {
+				merged[login.Name] = teaLoginToHostConfig(&login)
+				if defaultHost == "" && login.Default {
+					defaultHost = login.Name
+				}
+			}
+		}
+	}
+
+	if len(merged) == 0 && lastErr != nil {
+		return nil, "", lastErr
+	}
+	return merged, defaultHost, nil
+}
+
+func teaLoginToHostConfig(l *teaLogin) *HostConfig {
+	proto := "https"
+	host := l.URL
+	if u, err := url.Parse(l.URL); err == nil {
+		if u.Scheme != "" {
+			proto = u.Scheme
+		}
+		host = u.Host
+		if u.Path != "" && u.Path != "/" {
+			host = strings.TrimRight(host+u.Path, "/")
+		}
+	}
+	return &HostConfig{
+		Token:         l.Token,
+		User:          l.User,
+		APIProtocol:   proto,
+		APIHost:       host,
+		SkipTLSVerify: strconv.FormatBool(l.Insecure),
+		Provider:      providerGitea,
+	}
+}
+
+// teaConfigPaths returns candidate tea config.yml paths in priority order.
+func teaConfigPaths() []string {
+	var paths []string
+	for _, dir := range teaConfigDirs() {
+		paths = append(paths, filepath.Join(dir, "config.yml"))
+	}
+	return paths
+}
+
+// teaConfigDirs returns directories to search for tea config, in priority order.
+func teaConfigDirs() []string {
+	var dirs []string
+
+	if custom := os.Getenv("GLVALET_TEA_CONFIG"); custom != "" {
+		dirs = append(dirs, filepath.Dir(custom))
+	}
+
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		dirs = append(dirs, filepath.Join(xdg, "tea"))
+	}
+	if runtime.GOOS == "windows" {
+		if appData := os.Getenv("AppData"); appData != "" {
+			dirs = append(dirs, filepath.Join(appData, "tea"))
+		}
+	}
+
+	if home, _ := os.UserHomeDir(); home != "" {
+		dirs = append(dirs,
+			filepath.Join(home, ".config", "tea"), // Linux/macOS default
+			filepath.Join(home, ".tea"),           // older tea
+		)
 	}
 
 	return dirs

@@ -17,8 +17,9 @@ var ErrUnsupported = errors.New("provider: operation not supported")
 type Kind string
 
 const (
-	KindGitLab Kind = "gitlab"
-	KindGitHub Kind = "github"
+	KindGitLab  Kind = "gitlab"
+	KindGitHub  Kind = "github"
+	KindGitea   Kind = "gitea"
 )
 
 // User is a host-neutral identity reference.

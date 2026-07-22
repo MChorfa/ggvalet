@@ -122,21 +122,33 @@ func hostsCmd() *cobra.Command {
 				return err
 			}
 
-			// Print a provider-aware header first; this makes GitHub-mode users
+			// Print a provider-aware header first; this makes GitHub/Gitea-mode users
 			// realize why GLVALET_HOST is not the active selector.
-			if provider == "github" {
+			switch provider {
+			case "github":
 				fmt.Println(colorOK("✓ Active provider: github") + "  " + defaultHost)
 				if len(hosts) > 0 {
 					fmt.Println(colorDim("\nGitLab destinations (used by report push, sync, etc.):"))
 				}
-			} else if provider == "gitlab" {
+			case "gitea":
+				fmt.Println(colorOK("✓ Active provider: gitea") + "  " + defaultHost)
+				if len(hosts) > 0 {
+					fmt.Println(colorDim("\nGitea destinations:"))
+				}
+			default:
 				fmt.Println(colorOK("✓ Active provider: gitlab") + "  " + defaultHost)
 			}
 
 			if len(hosts) == 0 {
-				fmt.Println(colorDim("No GitLab hosts configured. Run: glab auth login"))
-				if provider == "github" {
+				switch provider {
+				case "github":
+					fmt.Println(colorDim("No GitLab hosts configured. Run: glab auth login"))
 					printGitHubHints()
+				case "gitea":
+					fmt.Println(colorDim("No Gitea logins configured. Run: tea login add"))
+					printGiteaHints()
+				default:
+					fmt.Println(colorDim("No GitLab hosts configured. Run: glab auth login"))
 				}
 				return nil
 			}
@@ -173,9 +185,12 @@ func hostsCmd() *cobra.Command {
 			}
 			table.Render()
 
-			if provider == "github" {
+			switch provider {
+			case "github":
 				printGitHubHints()
-			} else {
+			case "gitea":
+				printGiteaHints()
+			default:
 				fmt.Printf("\n%s  ggvalet --host <hostname> <command>\n",
 					colorDim("To switch:"))
 				fmt.Printf("%s  export GLVALET_HOST=%s\n\n",
@@ -196,6 +211,17 @@ func printGitHubHints() {
 	fmt.Printf("  %s\n\n", colorDim("export GLVALET_HOST=<hostname>"))
 }
 
+// printGiteaHints prints host-switching guidance for the Gitea provider.
+func printGiteaHints() {
+	fmt.Println(colorDim("\nTo keep using Gitea:"))
+	fmt.Println("  export GLVALET_PROVIDER=gitea")
+	fmt.Println("  export GLVALET_GITEA_URL=<url>")
+	fmt.Println("  export GLVALET_TOKEN=<token>")
+	fmt.Println(colorDim("\nTo switch to a GitLab host:"))
+	fmt.Println("  unset GLVALET_PROVIDER   # or set GLVALET_PROVIDER=gitlab")
+	fmt.Printf("  %s\n\n", colorDim("export GLVALET_HOST=<hostname>"))
+}
+
 // loadHostsForDisplay calls config internals without requiring a valid token.
 // It loads the glab file and returns the raw host map + default host string +
 // active provider.
@@ -209,7 +235,12 @@ func loadHostsForDisplay() (map[string]*config.HostConfig, string, string, error
 		switch {
 		case strings.Contains(err.Error(), "no GitHub token"):
 			return nil, "", provider, fmt.Errorf("%w\n  hint: set GLVALET_GITHUB_TOKEN (or GLVALET_TOKEN)", err)
+		case strings.Contains(err.Error(), "no Gitea logins"):
+			return nil, "", provider, fmt.Errorf("%w\n  hint: run `tea login add` or set GLVALET_TOKEN + GLVALET_GITEA_URL", err)
 		case strings.Contains(err.Error(), "no token"):
+			if provider == "gitea" {
+				return nil, "", provider, fmt.Errorf("%w\n  hint: set token with `tea login add` or GLVALET_TOKEN", err)
+			}
 			return nil, "", provider, fmt.Errorf("%w\n  hint: set token with `glab auth login` or GLVALET_TOKEN", err)
 		}
 		return nil, "", provider, err

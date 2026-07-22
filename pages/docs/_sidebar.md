@@ -2,4 +2,5 @@
 - [Install](install.md)
 - [Releases](releases.md)
 - [Verify](verify.md)
+- [Providers](providers.md)
 - [Project docs](project-docs/VWP-ATTESTATION.md)

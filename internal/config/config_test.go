@@ -698,6 +698,111 @@ hosts:
 	}
 }
 
+// ─── Gitea / tea config tests ─────────────────────────────────────────────────
+
+func writeTeaConfig(t *testing.T, dir, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "config.yml"), []byte(content), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+}
+
+func TestLoad_Gitea_FromTeaConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeTeaConfig(t, dir, `
+logins:
+  - name: try
+    url: https://gitea.try.example.com
+    token: gitea-token
+    default: true
+    user: alice
+    insecure: false
+  - name: local
+    url: http://localhost:3000
+    token: local-token
+    user: bob
+`)
+
+	t.Setenv("GLVALET_PROVIDER", "gitea")
+	t.Setenv("GLVALET_TEA_CONFIG", filepath.Join(dir, "config.yml"))
+	t.Setenv("HOME", "/nonexistent")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("GLVALET_TOKEN", "")
+	t.Setenv("GLVALET_GITEA_URL", "")
+
+	cfg, err := Load(Options{})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Provider != "gitea" {
+		t.Errorf("Provider = %q, expected %q", cfg.Provider, "gitea")
+	}
+	if cfg.Host != "try" {
+		t.Errorf("Host = %q, expected %q", cfg.Host, "try")
+	}
+	if cfg.Token != "gitea-token" {
+		t.Errorf("Token = %q, expected %q", cfg.Token, "gitea-token")
+	}
+	if cfg.User != "alice" {
+		t.Errorf("User = %q, expected %q", cfg.User, "alice")
+	}
+	if cfg.GiteaURL != "https://gitea.try.example.com" {
+		t.Errorf("GiteaURL = %q, expected %q", cfg.GiteaURL, "https://gitea.try.example.com")
+	}
+	if len(cfg.Hosts) != 2 {
+		t.Errorf("len(Hosts) = %d, expected 2", len(cfg.Hosts))
+	}
+	if cfg.Hosts["try"].Provider != "gitea" {
+		t.Errorf("Hosts['try'].Provider = %q, expected %q", cfg.Hosts["try"].Provider, "gitea")
+	}
+}
+
+func TestLoad_Gitea_EnvURL(t *testing.T) {
+	dir := t.TempDir()
+	writeTeaConfig(t, dir, "logins: []")
+
+	t.Setenv("GLVALET_PROVIDER", "gitea")
+	t.Setenv("GLVALET_TEA_CONFIG", filepath.Join(dir, "config.yml"))
+	t.Setenv("GLVALET_GITEA_URL", "https://gitea.env.example.com/path")
+	t.Setenv("GLVALET_TOKEN", "env-token")
+	t.Setenv("HOME", "/nonexistent")
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	cfg, err := Load(Options{})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Host != "gitea.env.example.com/path" {
+		t.Errorf("Host = %q, expected %q", cfg.Host, "gitea.env.example.com/path")
+	}
+	if cfg.GiteaURL != "https://gitea.env.example.com/path" {
+		t.Errorf("GiteaURL = %q, expected %q", cfg.GiteaURL, "https://gitea.env.example.com/path")
+	}
+	if cfg.Token != "env-token" {
+		t.Errorf("Token = %q, expected %q", cfg.Token, "env-token")
+	}
+}
+
+func TestLoad_Gitea_NoLoginsError(t *testing.T) {
+	dir := t.TempDir()
+	writeTeaConfig(t, dir, "logins: []")
+
+	t.Setenv("GLVALET_PROVIDER", "gitea")
+	t.Setenv("GLVALET_TEA_CONFIG", filepath.Join(dir, "config.yml"))
+	t.Setenv("GLVALET_TOKEN", "")
+	t.Setenv("GLVALET_GITEA_URL", "")
+	t.Setenv("HOME", "/nonexistent")
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	_, err := Load(Options{})
+	if err == nil {
+		t.Fatal("Load: expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "no Gitea logins") {
+		t.Errorf("error = %q, expected to contain 'no Gitea logins'", err.Error())
+	}
+}
+
 // ─── ForHost() Tests ─────────────────────────────────────────────────────────
 
 func TestForHost_ValidHost(t *testing.T) {
@@ -730,6 +835,32 @@ func TestForHost_ValidHost(t *testing.T) {
 	}
 	if cfg.JournalPath != journalPath {
 		t.Errorf("JournalPath = %q, expected %q", cfg.JournalPath, journalPath)
+	}
+}
+
+func TestForHost_Gitea(t *testing.T) {
+	hosts := map[string]*HostConfig{
+		"mygitea": {
+			Token:       "gitea-token",
+			User:        "alice",
+			APIProtocol: "https",
+			APIHost:     "gitea.example.com",
+			Provider:    "gitea",
+		},
+	}
+
+	cfg, err := ForHost(hosts, "mygitea", "/tmp/journal.jsonl")
+	if err != nil {
+		t.Fatalf("ForHost: %v", err)
+	}
+	if cfg.Provider != "gitea" {
+		t.Errorf("Provider = %q, expected %q", cfg.Provider, "gitea")
+	}
+	if cfg.GiteaURL != "https://gitea.example.com" {
+		t.Errorf("GiteaURL = %q, expected %q", cfg.GiteaURL, "https://gitea.example.com")
+	}
+	if cfg.GitLabURL != "" {
+		t.Errorf("GitLabURL = %q, expected empty", cfg.GitLabURL)
 	}
 }
 

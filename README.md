@@ -1,16 +1,16 @@
 # ggvalet
 
-A personal, multi-instance agent for GitLab and (experimental) GitHub. Every
-provider operation produces durable intent and outcome receipts in
+A personal, multi-instance agent for GitLab, GitHub, and (experimental) Gitea.
+Every provider operation produces durable intent and outcome receipts in
 `~/.ggvalet/state.db`; the legacy JSONL journal remains available for reports
 and backward compatibility.
 
 - Latest release: https://github.com/MChorfa/ggvalet/releases/latest
 - Docs site: https://mchorfa.github.io/ggvalet/
 
-Reads your existing **glab CLI config** (`~/.config/glab-cli/config.yml`):
-tokens, `skip_tls_verify`, and `api_host` are inherited per instance. No
-separate setup.
+Reads your existing **glab CLI config** (`~/.config/glab-cli/config.yml`) or
+**tea CLI config** (`~/.config/tea/config.yml`): tokens, `skip_tls_verify`, and
+`api_host` / `url` are inherited per instance. No separate setup.
 
 ---
 
@@ -109,6 +109,7 @@ reference and `BUILD_PROMPT.md` for a from-scratch build guide.
 - `internal/provider` — host-neutral `Provider` interface.
 - `internal/provider/gitlab/` — GitLab REST adapter.
 - `internal/provider/github/` — GitHub REST adapter (opt-in, experimental).
+- `internal/provider/gitea/` — Gitea REST adapter (experimental).
 - `internal/observed` — persists intent before each remote call and outcome
   after; failure to persist intent blocks the call.
 - `internal/state` — SQLite store for receipts and plan runs (authoritative).
@@ -165,7 +166,7 @@ The codebase exposes a host-neutral `Provider` interface at
 adapter is selected at startup.
 
 - `client.New(cfg)` selects the adapter via `providerfactory.NewFromConfig`.
-- `GLVALET_PROVIDER` selects the provider: `gitlab` (default) or `github`.
+- `GLVALET_PROVIDER` selects the provider: `gitlab` (default), `github`, or `gitea`.
 - `GLVALET_HOST` scopes commands to a single configured host.
 
 **GitLab adapter** (`internal/provider/gitlab/`) — exercised by every `ggvalet`
@@ -181,17 +182,17 @@ querying GitLab (`cmd/hostguard.go`).
 
 ### Host-capability matrix
 
-| Command surface | GitLab | GitHub |
-|---|---|---|
-| `issue` (list/mine/get/create/update/close/comment) | GA | `list --milestone` unsupported |
-| `mr` (list/mine/create/approve/merge/diff/close) | GA | `mine`, `approve` unsupported |
-| `label` (list/create/sync) | GA | GA |
-| `epic`, group `milestone` | GA | no equivalent |
-| `sync`, `search`, `standup`, `timeline`, `renovate`, `shields`, `tui`, `report` | GA | GitLab-only |
+| Command surface | GitLab | GitHub | Gitea |
+|---|---|---|---|---|
+| `issue` (list/mine/get/create/update/close/comment) | GA | `list --milestone` unsupported | GA |
+| `mr` (list/mine/create/approve/merge/diff/close) | GA | `mine`, `approve` unsupported | `mine`, `diff` unsupported |
+| `label` (list/create/sync) | GA | GA | GA |
+| `epic`, group `milestone` | GA | no equivalent | no equivalent |
+| `sync`, `search`, `standup`, `timeline`, `renovate`, `shields`, `tui`, `report` | GA | GitLab-only | `issue`, `mr`, `label`, `report` work; `sync`, `search`, `standup`, `timeline`, `renovate`, `shields`, `tui` are GitLab-only |
 
 "unsupported" returns `provider.ErrUnsupported` (a clear error), never a silent
-fallback. GitHub stays `[S]` experimental until a live-instance integration job
-runs in CI.
+fallback. GitHub and Gitea stay `[S]` experimental until live-instance
+integration jobs run in CI.
 
 ---
 
@@ -221,6 +222,19 @@ export GLVALET_GITHUB_URL="https://api.github.com"      # or enterprise base URL
 `GLVALET_PROVIDER` selects the adapter; `GLVALET_GITHUB_ENABLED=true` arms it
 (otherwise `github.New` returns `ErrFeatureDisabled`). See the host-capability
 matrix above for what each surface supports.
+
+### Gitea provider (opt-in, `[S]` experimental)
+
+```bash
+export GLVALET_PROVIDER=gitea                       # select the adapter
+export GLVALET_GITEA_URL="https://gitea.example.com" # optional: override tea URL
+export GLVALET_TOKEN="gitea_xxx"                    # PAT or token from tea
+```
+
+`ggvalet` reads `tea login` credentials from `~/.config/tea/config.yml` or
+`~/.tea/tea.yml` automatically. The `issue`, `mr`, `label`, `report`, `plan`,
+`journal`, and `hosts` commands are supported; group milestones, epics, and
+`mr mine` / `mr diff` return `provider.ErrUnsupported`.
 
 ---
 

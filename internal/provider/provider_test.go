@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/MChorfa/ggvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/provider/gitea"
 	"github.com/MChorfa/ggvalet/internal/provider/gitlab"
 )
 
@@ -39,6 +40,7 @@ func TestKind_StringValues(t *testing.T) {
 	}{
 		{provider.KindGitLab, "gitlab"},
 		{provider.KindGitHub, "github"},
+		{provider.KindGitea, "gitea"},
 	}
 
 	for _, tc := range tests {
@@ -54,11 +56,12 @@ func TestKind_StringValues(t *testing.T) {
 
 // ─── compile-time interface satisfaction ─────────────────────────────────────
 
-// TestProviderInterface_CompileTime proves the GitLab provider satisfies the
-// host-neutral provider.Provider interface without needing a stub.
+// TestProviderInterface_CompileTime proves the GitLab and Gitea providers
+// satisfy the host-neutral provider.Provider interface without needing a stub.
 func TestProviderInterface_CompileTime(t *testing.T) {
 	t.Parallel()
 
 	// Compile-time check: this line fails to build if Provider interface changes.
 	var _ provider.Provider = (*gitlab.GitLab)(nil)
+	var _ provider.Provider = (*gitea.Gitea)(nil)
 }

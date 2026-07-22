@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ckodex/gitlabvalet/internal/plan"
-	"github.com/ckodex/gitlabvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/plan"
+	"github.com/MChorfa/ggvalet/internal/provider"
 )
 
 func TestPlanApply_RequiresYes_WhenApply(t *testing.T) {

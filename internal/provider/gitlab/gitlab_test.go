@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ckodex/gitlabvalet/internal/config"
-	"github.com/ckodex/gitlabvalet/internal/provider"
-	gitlabprov "github.com/ckodex/gitlabvalet/internal/provider/gitlab"
+	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/provider"
+	gitlabprov "github.com/MChorfa/ggvalet/internal/provider/gitlab"
 )
 
 // ─── helpers ──────────────────────────────────────────────────────────────────

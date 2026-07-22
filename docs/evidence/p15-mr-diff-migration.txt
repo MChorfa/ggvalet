@@ -3,21 +3,21 @@
 ## GitLab: GetMergeRequestChanges -> []FileDiff. GitHub: PullRequests.ListFiles -> []FileDiff (status->flags, previous_filename->OldPath).
 ## Mocks updated. TDD httptest tests added (gitlab MapsChanges, github MapsStatusToFlags).
 ## cmd/mr.go diff migrated: GetMergeRequest + GetMergeRequestDiff via Provider; renderFileDiff now takes provider.FileDiff; GitLab SDK import REMOVED from mr.go.
-## mr command surface now 100% provider-based; hostguard: 'glv mr' moved to neutral PREFIX (all leaves migrated).
+## mr command surface now 100% provider-based; hostguard: 'ggvalet mr' moved to neutral PREFIX (all leaves migrated).
 
 ## build/vet/fmt
 build: clean
 vet: clean
 gofmt: clean
 ## sandbox suites + internal unit test
-ok  	github.com/ckodex/gitlabvalet/cmd	(cached)
-ok  	github.com/ckodex/gitlabvalet/internal/provider	(cached)
-ok  	github.com/ckodex/gitlabvalet/internal/plan	(cached)
-ok  	github.com/ckodex/gitlabvalet/internal/provider/gitlab	(cached)
+ok  	github.com/MChorfa/ggvalet/cmd	(cached)
+ok  	github.com/MChorfa/ggvalet/internal/provider	(cached)
+ok  	github.com/MChorfa/ggvalet/internal/plan	(cached)
+ok  	github.com/MChorfa/ggvalet/internal/provider/gitlab	(cached)
 ## loopback packages compile (TDD diff tests run in CI):
-ok  	github.com/ckodex/gitlabvalet/internal/provider/gitlab	(cached) [no tests to run]
-ok  	github.com/ckodex/gitlabvalet/internal/provider/github	(cached) [no tests to run]
+ok  	github.com/MChorfa/ggvalet/internal/provider/gitlab	(cached) [no tests to run]
+ok  	github.com/MChorfa/ggvalet/internal/provider/github	(cached) [no tests to run]
 
 ## Residual
 raw .GL. (non-test): 46 (was 48; mr.go 2->0, SDK import removed)
-cmd TODO(ckodex): 2 — label.go:115 (cross-host sync), issue.go:41 (list milestone-title filter)
+cmd TODO(MChorfa): 2 — label.go:115 (cross-host sync), issue.go:41 (list milestone-title filter)

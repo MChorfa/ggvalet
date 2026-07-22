@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ckodex/gitlabvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/journal"
 	"github.com/spf13/cobra"
 	gl "github.com/xanzy/go-gitlab"
 )
@@ -30,11 +30,11 @@ func standupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "standup",
 		Short: "Generate a daily standup summary from the journal + open issues",
-		Example: `  glv standup                        # print to stdout
-  glv standup --since 72h             # Monday standup (covers weekend)
-  glv standup --output standup.md     # write to file
-  glv standup --slack https://hooks.slack.com/...
-  glv standup --teams https://outlook.office.com/...`,
+		Example: `  ggvalet standup                        # print to stdout
+  ggvalet standup --since 72h             # Monday standup (covers weekend)
+  ggvalet standup --output standup.md     # write to file
+  ggvalet standup --slack https://hooks.slack.com/...
+  ggvalet standup --teams https://outlook.office.com/...`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dur, err := parseDuration(since)
 			if err != nil {

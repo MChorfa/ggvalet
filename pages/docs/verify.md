@@ -13,7 +13,7 @@ release you want, then extract the binary:
 
 ```bash
 tar -xzf glv_*.tar.gz
-RELEASE_TAG=$(./glv --version | awk '{print $2}')
+RELEASE_TAG=$(./ggvalet --version | awk '{print $2}')
 ```
 
 ## Checksums
@@ -31,7 +31,7 @@ shasum -a 256 -c SHA256SUMS
 ## Cosign signature
 
 ```bash
-RELEASE_PROJECT_URL="https://github.com/ckodex/gitlabvalet"
+RELEASE_PROJECT_URL="https://github.com/MChorfa/ggvalet"
 RELEASE_ISSUER="https://token.actions.githubusercontent.com"
 
 cosign verify-blob SHA256SUMS \

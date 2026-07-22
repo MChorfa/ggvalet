@@ -6,7 +6,7 @@ import (
 )
 
 func TestExecuteVersion(t *testing.T) {
-	os.Args = []string{"glv", "--version"}
+	os.Args = []string{"ggvalet", "--version"}
 	Execute("test")
 }
 

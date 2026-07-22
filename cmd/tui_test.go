@@ -5,7 +5,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ckodex/gitlabvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/journal"
 )
 
 func updateTUI(t *testing.T, m tuiModel, msg tea.Msg) tuiModel {

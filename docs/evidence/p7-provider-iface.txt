@@ -12,7 +12,7 @@ no errors; exit=0
 exit=0
 
 ## go test ./internal/provider  (stub conformance pkg, no httptest)
-ok  	github.com/ckodex/gitlabvalet/internal/provider	(cached)
+ok  	github.com/MChorfa/ggvalet/internal/provider	(cached)
 
 ## SANDBOX LIMITATION
 httptest-based tests panic at newLocalListener (loopback bind blocked by sandbox).

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Install the latest GitLab Valet release for your OS and architecture.
+# Install the latest ggvalet release for your OS and architecture.
 # Usage:
-#   curl -L https://ckodex.github.io/gitlabvalet/install.sh | bash
-#   curl -L https://ckodex.github.io/gitlabvalet/install.sh | INSTALL_DIR=~/.local/bin bash
+#   curl -L https://MChorfa.github.io/ggvalet/install.sh | bash
+#   curl -L https://MChorfa.github.io/ggvalet/install.sh | INSTALL_DIR=~/.local/bin bash
 set -euo pipefail
 
-GITHUB_REPO="${GLV_GITHUB_REPO:-ckodex/gitlabvalet}"
+GITHUB_REPO="${GLV_GITHUB_REPO:-MChorfa/ggvalet}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 die() {
@@ -60,7 +60,7 @@ fi
 
 tar -xzf "$archive"
 
-echo "Installing glv to ${INSTALL_DIR}..."
+echo "Installing ggvalet to ${INSTALL_DIR}..."
 mkdir -p "$INSTALL_DIR"
-install -m 755 glv "${INSTALL_DIR}/glv"
-echo "Done. Run 'glv --version' to confirm."
+install -m 755 ggvalet "${INSTALL_DIR}/ggvalet"
+echo "Done. Run 'ggvalet --version' to confirm."

@@ -1,4 +1,4 @@
-module github.com/ckodex/gitlabvalet
+module github.com/MChorfa/ggvalet
 
 go 1.24.0
 

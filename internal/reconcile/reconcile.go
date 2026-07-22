@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/ckodex/gitlabvalet/internal/observed"
-	"github.com/ckodex/gitlabvalet/internal/plan"
-	"github.com/ckodex/gitlabvalet/internal/provider"
-	"github.com/ckodex/gitlabvalet/internal/state"
+	"github.com/MChorfa/ggvalet/internal/observed"
+	"github.com/MChorfa/ggvalet/internal/plan"
+	"github.com/MChorfa/ggvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/state"
 )
 
 type Engine struct {

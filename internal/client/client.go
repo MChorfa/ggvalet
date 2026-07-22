@@ -8,13 +8,13 @@ import (
 	"net/http"
 	"path/filepath"
 
-	"github.com/ckodex/gitlabvalet/internal/cache"
-	"github.com/ckodex/gitlabvalet/internal/config"
-	"github.com/ckodex/gitlabvalet/internal/journal"
-	"github.com/ckodex/gitlabvalet/internal/observed"
-	"github.com/ckodex/gitlabvalet/internal/provider"
-	"github.com/ckodex/gitlabvalet/internal/providerfactory"
-	"github.com/ckodex/gitlabvalet/internal/state"
+	"github.com/MChorfa/ggvalet/internal/cache"
+	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/observed"
+	"github.com/MChorfa/ggvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/providerfactory"
+	"github.com/MChorfa/ggvalet/internal/state"
 	gl "github.com/xanzy/go-gitlab"
 )
 

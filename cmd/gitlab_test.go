@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ckodex/gitlabvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/journal"
 )
 
 func TestEpicCommands(t *testing.T) {

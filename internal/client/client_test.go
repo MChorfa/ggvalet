@@ -13,11 +13,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ckodex/gitlabvalet/internal/cache"
-	"github.com/ckodex/gitlabvalet/internal/client"
-	"github.com/ckodex/gitlabvalet/internal/config"
-	"github.com/ckodex/gitlabvalet/internal/journal"
-	"github.com/ckodex/gitlabvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/cache"
+	"github.com/MChorfa/ggvalet/internal/client"
+	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/provider"
 	gl "github.com/xanzy/go-gitlab"
 )
 

@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ckodex/gitlabvalet/internal/config"
-	"github.com/ckodex/gitlabvalet/internal/journal"
-	"github.com/ckodex/gitlabvalet/internal/provider"
-	githubprov "github.com/ckodex/gitlabvalet/internal/provider/github"
+	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/provider"
+	githubprov "github.com/MChorfa/ggvalet/internal/provider/github"
 )
 
 // errorResponse mimics a GitHub API server error body.

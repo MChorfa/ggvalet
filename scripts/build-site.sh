@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the GitLab Valet static site from pages/, README.md, and optional
+# Build the ggvalet static site from pages/, README.md, and optional
 # GoReleaser metadata/artifacts JSON. The output directory is suitable for
 # GitHub Pages or GitLab Pages (use --output public for GitLab).
 set -euo pipefail
@@ -9,9 +9,9 @@ OUTDIR="$ROOT/site"
 METADATA=""
 ARTIFACTS=""
 VERSION="latest"
-GITHUB_OWNER="ckodex"
-GITHUB_REPO="gitlabvalet"
-GITLAB_URL="https://gitlab.com/ckodex/gitlabvalet"
+GITHUB_OWNER="MChorfa"
+GITHUB_REPO="ggvalet"
+GITLAB_URL="https://gitlab.com/MChorfa/ggvalet"
 RELEASE_BASE_URL=""
 
 usage() {
@@ -86,11 +86,11 @@ mkdir -p "$OUTDIR/docs"
 cp "$ROOT/README.md" "$OUTDIR/docs/README.md"
 
 # Include the installers in the site root.
-if [[ -f "$ROOT/scripts/install-glv.sh" ]]; then
-  cp "$ROOT/scripts/install-glv.sh" "$OUTDIR/install.sh"
+if [[ -f "$ROOT/scripts/install-ggvalet.sh" ]]; then
+  cp "$ROOT/scripts/install-ggvalet.sh" "$OUTDIR/install.sh"
 fi
-if [[ -f "$ROOT/scripts/install-glv.ps1" ]]; then
-  cp "$ROOT/scripts/install-glv.ps1" "$OUTDIR/install.ps1"
+if [[ -f "$ROOT/scripts/install-ggvalet.ps1" ]]; then
+  cp "$ROOT/scripts/install-ggvalet.ps1" "$OUTDIR/install.ps1"
 fi
 
 # Include the in-repo docs/ as a sub-section of the site.

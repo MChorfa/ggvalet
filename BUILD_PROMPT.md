@@ -1,7 +1,7 @@
-# GitLab Valet — Zero-to-Hero Build Prompt
+# ggvalet — Zero-to-Hero Build Prompt
 
 > A complete system prompt for an AI coding agent (or a developer) to build
-> the GitLab Valet CLI (`glv`) from an empty directory to a shipping tool.
+> the ggvalet CLI (`ggvalet`) from an empty directory to a shipping tool.
 > Hand this to Claude Code, Cursor, or any capable coding agent and it will
 > reconstruct the entire project. Each phase is independently buildable and
 > testable.
@@ -10,7 +10,7 @@
 
 ## Role & objective
 
-You are a senior Go engineer building **GitLab Valet** (`glv`): a multi-instance
+You are a senior Go engineer building **ggvalet** (`ggvalet`): a multi-instance
 GitLab management CLI with durable operation receipts and resumable work-plan
 reconciliation. Every provider operation records intent and outcome in SQLite;
 the JSONL journal remains the report/standup compatibility surface.
@@ -24,7 +24,7 @@ one compiles cleanly with `gofmt -l .` reporting no files.
 ## Non-negotiable design principles
 
 1. **Receipt-first.** A provider decorator persists intent before every remote
-   call and outcome afterward in `~/.gitlabvalet/state.db`. A failed intent
+   call and outcome afterward in `~/.ggvalet/state.db`. A failed intent
    write blocks the call; a failed outcome write produces an uncertain result.
 2. **glab config native.** Read credentials, TLS settings, and API hosts from
    the existing `glab` CLI config (`~/.config/glab-cli/config.yml`). Never
@@ -33,19 +33,19 @@ one compiles cleanly with `gofmt -l .` reporting no files.
    (a string `"true"`, not a bool) and `api_host` (which may contain a path
    segment like `host.example.com/gitlab`). Both must be honored exactly.
 4. **One binary, no runtime deps.** Single `go build` produces a portable
-   binary. Local state lives under `~/.gitlabvalet/`.
+   binary. Local state lives under `~/.ggvalet/`.
 5. **Two clients when needed.** Cross-instance features (sync, report push)
    build a second, independent client on demand from the loaded hosts map via
    a `config.ForHost()` factory — never mutate global state.
 6. **Idempotent sync and reconciliation.** Managed items carry a hidden HTML marker
-   (`<!-- glv-sync-src: URL -->`) so re-runs skip already-synced items.
+   (`<!-- ggvalet-sync-src: URL -->`) so re-runs skip already-synced items.
 7. **Prose over bullets in output; minimal formatting; warm, terse tone.**
 
 ---
 
 ## Tech stack
 
-- Go 1.24+, module path `github.com/ckodex/gitlabvalet`
+- Go 1.24+, module path `github.com/MChorfa/ggvalet`
 - `github.com/xanzy/go-gitlab` — GitLab API client
 - `github.com/spf13/cobra` — CLI framework
 - `github.com/spf13/viper` — env/config (used lightly)
@@ -61,7 +61,7 @@ one compiles cleanly with `gofmt -l .` reporting no files.
 ## Repository layout (target)
 
 ```
-gitlabvalet/
+ggvalet/
 ├── main.go                      # cmd.Execute()
 ├── go.mod
 ├── Makefile                     # build, install, test, cross
@@ -102,7 +102,7 @@ gitlabvalet/
 
 ## Phase 1 — Foundation (config + journal + client + first command)
 
-**Goal:** `glv issue list -p group/proj` works and the operation lands in the journal.
+**Goal:** `ggvalet issue list -p group/proj` works and the operation lands in the journal.
 
 ### 1a. `internal/config/config.go`
 
@@ -159,7 +159,7 @@ Append-only JSONL ledger:
 
 ### 1d. `cmd/root.go`
 
-- Cobra root `glv`, persistent `--host`/`-H` flag.
+- Cobra root `ggvalet`, persistent `--host`/`-H` flag.
 - `PersistentPreRunE`: `config.Load` then `client.New`; print
   `→ host: <host> as <user> [tls-skip]` to **stderr** (never stdout — keeps
   piped output clean).
@@ -172,8 +172,8 @@ Append-only JSONL ledger:
 Each handler: resolve project (flag → `cfg.DefaultProject`), call go-gitlab,
 then `Rec()` on success / `RecErr()` on failure. Render lists with tablewriter.
 
-**Checkpoint:** `go build .`, `glv hosts`, `glv issue list -p <proj>`,
-confirm a line appears in `~/.gitlabvalet/journal.jsonl`.
+**Checkpoint:** `go build .`, `ggvalet hosts`, `ggvalet issue list -p <proj>`,
+confirm a line appears in `~/.ggvalet/journal.jsonl`.
 
 ---
 
@@ -205,7 +205,7 @@ suffixes plus standard Go durations. Add `shortHostname()` for display.
 that builds the markdown, then creates an issue on a target project (any host
 via `ForHost`), auto-titling `Activity Report YYYY (Wxx)`.
 
-**Checkpoint:** `glv report --since 7d`, `glv journal show --since 7d`.
+**Checkpoint:** `ggvalet report --since 7d`, `ggvalet journal show --since 7d`.
 
 ---
 
@@ -213,14 +213,14 @@ via `ForHost`), auto-titling `Activity Report YYYY (Wxx)`.
 
 `cmd/sync.go` with subcommands `issues`, `epics`, `milestones`:
 - `syncClients(srcHost, dstHost)` builds two clients via `config.ForHost`.
-- Dedup: append `syncFooter(srcURL)` (`<!-- glv-sync-src: URL -->`) to created
+- Dedup: append `syncFooter(srcURL)` (`<!-- ggvalet-sync-src: URL -->`) to created
   item descriptions; before creating, scan destination for the marker and skip
   matches. Milestones dedup by title.
 - Always support `--dry-run` and `--limit`. Journal both the source read and
   destination create (tag `sync-src` / `sync-dst`).
 - Add `label sync` to `cmd/label.go` (copy labels with colors, skip existing).
 
-**Checkpoint:** `glv sync issues --src-... --dst-... --dry-run` then real run;
+**Checkpoint:** `ggvalet sync issues --src-... --dst-... --dry-run` then real run;
 re-run and confirm everything is skipped (idempotent).
 
 ---
@@ -246,27 +246,27 @@ re-run and confirm everything is skipped (idempotent).
   (Issues/Epics/Milestones/Journal), lazy-load per tab, `Tab/1-4/j/k///o/r/q`
   keybindings, CKODEX palette (deep blue, teal, lavender, yellow).
 
-**Checkpoint:** `glv tui`, `glv timeline -p ... -g ...`, `glv renovate list`,
-`glv standup`, `glv search "x" --all-hosts`.
+**Checkpoint:** `ggvalet tui`, `ggvalet timeline -p ... -g ...`, `ggvalet renovate list`,
+`ggvalet standup`, `ggvalet search "x" --all-hosts`.
 
 ---
 
 ## Definition of done
 
 - `go build ./...` clean; `gofmt -l .` empty; `go vet ./...` clean.
-- `glv hosts` lists every glab-configured instance with correct TLS/default flags.
+- `ggvalet hosts` lists every glab-configured instance with correct TLS/default flags.
 - Every provider call has durable intent/outcome receipts; JSONL reports remain compatible.
 - Plan v2 validates dependencies, rejects cycles, links issues to GitLab epics,
   stops on failure, and resumes without duplicating completed resources.
-- `glv sync` is idempotent across runs.
+- `ggvalet sync` is idempotent across runs.
 - `make cross` produces darwin/linux/windows binaries.
 
 ## Phase 6 — Durable receipts and work reconciliation
 
-- Add `GLVALET_STATE` with default `~/.gitlabvalet/state.db`; use SQLite WAL,
+- Add `GLVALET_STATE` with default `~/.ggvalet/state.db`; use SQLite WAL,
   foreign keys, a busy timeout, `0600` database mode, and idempotent migrations.
 - Import the legacy journal once. Keep JSONL for existing reports and expose
-  `glv receipt export` for portable receipt output.
+  `ggvalet receipt export` for portable receipt output.
 - Decorate `provider.Provider` so intent is committed before execution and
   outcome afterward. Observe raw GitLab SDK traffic at the HTTP transport.
 - Extend plan schema v2 with `depends_on`, issue `epic`, and `weight`. Build a
@@ -286,7 +286,7 @@ the completed resources are not duplicated and the issue is created and linked o
   compare case-insensitively to `"true"`.
 - `api_host` can contain a path (`sc01.example.com/gitlab`) → use verbatim in
   `APIURL`, do not URL-encode.
-- The startup host indicator goes to **stderr**, so `glv report ... | pbcopy`
+- The startup host indicator goes to **stderr**, so `ggvalet report ... | pbcopy`
   stays clean.
 - go-gitlab work-items support is thin — use raw HTTP for `/work_items`.
 - In bubbletea, let the list component consume keys while

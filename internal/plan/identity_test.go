@@ -164,7 +164,7 @@ func TestIssueIdentity_EmptyEpicValid(t *testing.T) {
 func TestEmbedMarker_AppendToEmpty(t *testing.T) {
 	hash := "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 	result := EmbedMarker("", hash)
-	expected := "<!-- glv:plan-id=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789 -->\n"
+	expected := "<!-- ggvalet:plan-id=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789 -->\n"
 
 	if result != expected {
 		t.Errorf("EmbedMarker to empty body: got %q, want %q", result, expected)
@@ -179,7 +179,7 @@ func TestEmbedMarker_AppendToBody(t *testing.T) {
 	if !strings.HasPrefix(result, "Hello\n\n") {
 		t.Errorf("EmbedMarker result should start with 'Hello\\n\\n': got %q", result)
 	}
-	if !strings.Contains(result, "<!-- glv:plan-id=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789 -->") {
+	if !strings.Contains(result, "<!-- ggvalet:plan-id=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789 -->") {
 		t.Errorf("EmbedMarker result should contain marker: got %q", result)
 	}
 }
@@ -188,7 +188,7 @@ func TestEmbedMarker_ReplacesExisting(t *testing.T) {
 	oldHash := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	newHash := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-	body := "Hello\n\n<!-- glv:plan-id=" + oldHash + " -->\n"
+	body := "Hello\n\n<!-- ggvalet:plan-id=" + oldHash + " -->\n"
 	result := EmbedMarker(body, newHash)
 
 	if strings.Contains(result, oldHash) {
@@ -198,7 +198,7 @@ func TestEmbedMarker_ReplacesExisting(t *testing.T) {
 		t.Errorf("EmbedMarker should contain new hash: got %q", result)
 	}
 
-	markerCount := len(regexp.MustCompile(`<!-- glv:plan-id=`).FindAllString(result, -1))
+	markerCount := len(regexp.MustCompile(`<!-- ggvalet:plan-id=`).FindAllString(result, -1))
 	if markerCount != 1 {
 		t.Errorf("EmbedMarker should have exactly 1 marker: got %d", markerCount)
 	}
@@ -206,7 +206,7 @@ func TestEmbedMarker_ReplacesExisting(t *testing.T) {
 
 func TestExtractMarker_Present(t *testing.T) {
 	hash := "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
-	body := "Some description\n\n<!-- glv:plan-id=" + hash + " -->\n"
+	body := "Some description\n\n<!-- ggvalet:plan-id=" + hash + " -->\n"
 
 	extracted, ok := ExtractMarker(body)
 
@@ -247,7 +247,7 @@ func TestExtractMarker_RoundTrip(t *testing.T) {
 }
 
 func TestExtractMarker_RejectsShortHash(t *testing.T) {
-	body := "<!-- glv:plan-id=abc -->"
+	body := "<!-- ggvalet:plan-id=abc -->"
 
 	extracted, ok := ExtractMarker(body)
 

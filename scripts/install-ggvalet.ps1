@@ -1,10 +1,10 @@
-# Install the latest GitLab Valet release for Windows.
+# Install the latest ggvalet release for Windows.
 # Usage:
-#   iwr -useb https://ckodex.github.io/gitlabvalet/install.ps1 | iex
+#   iwr -useb https://MChorfa.github.io/ggvalet/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
-$repo = if ($env:GLV_GITHUB_REPO) { $env:GLV_GITHUB_REPO } else { "ckodex/gitlabvalet" }
+$repo = if ($env:GLV_GITHUB_REPO) { $env:GLV_GITHUB_REPO } else { "MChorfa/ggvalet" }
 
 $arch = if ([Environment]::Is64BitOperatingSystem) { "amd64" } else { "amd64" }
 $tag = $args[0]
@@ -56,8 +56,8 @@ try {
         New-Item -ItemType Directory -Path $installDir -Force | Out-Null
     }
 
-    Copy-Item -Path (Join-Path $tmp "glv.exe") -Destination (Join-Path $installDir "glv.exe") -Force
-    Write-Host "glv installed to $installDir\glv.exe"
+    Copy-Item -Path (Join-Path $tmp "ggvalet.exe") -Destination (Join-Path $installDir "ggvalet.exe") -Force
+    Write-Host "ggvalet installed to $installDir\ggvalet.exe"
 } finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }

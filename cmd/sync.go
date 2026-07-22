@@ -3,7 +3,7 @@
 // Deduplication strategy:
 //
 //	issues/epics  — hidden HTML comment appended to description:
-//	  <!-- glv-sync-src: https://host/group/proj/-/issues/42 -->
+//	  <!-- ggvalet-sync-src: https://host/group/proj/-/issues/42 -->
 //	  Safe to re-run: items already carrying this marker are skipped.
 //	milestones    — title-match on the destination (milestones have no body).
 package cmd
@@ -13,9 +13,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ckodex/gitlabvalet/internal/client"
-	"github.com/ckodex/gitlabvalet/internal/config"
-	"github.com/ckodex/gitlabvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/client"
+	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/journal"
 	"github.com/spf13/cobra"
 	gl "github.com/xanzy/go-gitlab"
 )
@@ -23,13 +23,13 @@ import (
 // ─── Sync marker helpers ──────────────────────────────────────────────────────
 
 const (
-	syncPfx = "<!-- glv-sync-src: "
+	syncPfx = "<!-- ggvalet-sync-src: "
 	syncSfx = " -->"
 )
 
 func syncFooter(srcURL string) string {
 	return fmt.Sprintf(
-		"\n\n---\n*Synced by [GitLab Valet](https://github.com/ckodex/gitlabvalet)*  \n%s%s%s",
+		"\n\n---\n*Synced by [ggvalet](https://github.com/MChorfa/ggvalet)*  \n%s%s%s",
 		syncPfx, srcURL, syncSfx,
 	)
 }
@@ -80,7 +80,7 @@ func syncCmd() *cobra.Command {
 		Use:   "sync",
 		Short: "Copy issues / epics / milestones between any two GitLab instances",
 		Example: `  # Issues from thalesdigital → sc01 (dry-run first)
-  glv sync issues \
+  ggvalet sync issues \
     --src-host gitlab.thalesdigital.io \
     --src-project group/proj \
     --dst-host sc01-trt.thales-systems.ca/gitlab \
@@ -88,12 +88,12 @@ func syncCmd() *cobra.Command {
     --dry-run
 
   # Epics in the other direction
-  glv sync epics \
+  ggvalet sync epics \
     --src-host sc01-trt.thales-systems.ca/gitlab --src-group my-group \
     --dst-host gitlab.thalesdigital.io           --dst-group other-group
 
   # Milestones within the same host, different project
-  glv sync milestones --src-project g/proj-a --dst-project g/proj-b`,
+  ggvalet sync milestones --src-project g/proj-a --dst-project g/proj-b`,
 	}
 	cmd.AddCommand(syncIssuesCmd(), syncEpicsCmd(), syncMilestonesCmd())
 	return cmd

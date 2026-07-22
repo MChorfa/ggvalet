@@ -38,9 +38,9 @@ func shieldsBadgeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "badge",
 		Short: "Generate shields.io badge markdown for a project's README",
-		Example: `  glv shields badge --project group/project
-  glv shields badge --project group/project --output README-badges.md
-  glv shields badge --project group/project --endpoint-json`,
+		Example: `  ggvalet shields badge --project group/project
+  ggvalet shields badge --project group/project --output README-badges.md
+  ggvalet shields badge --project group/project --endpoint-json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if project == "" {
 				project = cfg.DefaultProject
@@ -121,7 +121,7 @@ func shieldsBadgeCmd() *cobra.Command {
 
 			// ── Markdown output ───────────────────────────────────────────────
 			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("<!-- GitLab Valet badges for %s -->\n\n", project))
+			sb.WriteString(fmt.Sprintf("<!-- ggvalet badges for %s -->\n\n", project))
 
 			// Pipeline
 			sb.WriteString(fmt.Sprintf(
@@ -183,8 +183,8 @@ func shieldsChipsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "chips",
 		Short: "Print colored label chips for an issue (or all labels in a project)",
-		Example: `  glv shields chips --project group/project              # all labels
-  glv shields chips --project group/project --iid 42    # labels on issue #42`,
+		Example: `  ggvalet shields chips --project group/project              # all labels
+  ggvalet shields chips --project group/project --iid 42    # labels on issue #42`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if project == "" {
 				project = cfg.DefaultProject

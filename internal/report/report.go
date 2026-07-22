@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ckodex/gitlabvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/journal"
 )
 
 // Format controls report output.

@@ -1,12 +1,12 @@
-# GitLab Valet (`glv`)
+# ggvalet (`ggvalet`)
 
 Your personal multi-instance GitLab agent. Every provider operation produces
-durable intent and outcome receipts in `~/.gitlabvalet/state.db`. The existing
+durable intent and outcome receipts in `~/.ggvalet/state.db`. The existing
 JSONL journal remains available for reports and backward compatibility.
 
 ```
 ╔═══════════════════════════════════════════════════╗
-║          GitLab Valet  (ckodex/gitlabvalet)       ║
+║          ggvalet  (MChorfa/ggvalet)       ║
 ║  Manage · Record · Report  — never miss a thing  ║
 ╚═══════════════════════════════════════════════════╝
 ```
@@ -21,10 +21,10 @@ separate setup.
 
 ```bash
 go mod tidy
-make build           # → ./glv
-make install         # → $GOBIN/glv
+make build           # → ./ggvalet
+make install         # → $GOBIN/ggvalet
 make cross           # → dist/ (darwin, linux, windows)
-glv --version        # prints the build tag
+ggvalet --version        # prints the build tag
 ```
 
 ### Verify a signed release
@@ -35,7 +35,7 @@ Tagged releases ship cross-platform binaries, a `SHA256SUMS`, a CycloneDX SBOM
 ```bash
 sha256sum -c SHA256SUMS                                   # checksums match
 
-RELEASE_PROJECT_URL="https://gitlab.example.com/group/gitlabvalet"
+RELEASE_PROJECT_URL="https://gitlab.example.com/group/ggvalet"
 RELEASE_TAG="v0.2.0"
 RELEASE_ISSUER="https://gitlab.example.com"
 
@@ -48,7 +48,7 @@ cosign verify-blob SHA256SUMS \
 
 Then confirm the smoke check:
 ```bash
-glv hosts
+ggvalet hosts
 ```
 
 ---
@@ -70,16 +70,16 @@ glv hosts
 ## Quick start
 
 ```bash
-glv hosts                              # list configured instances
-glv issue mine                         # my open issues, default host
-glv --host sc01-trt.thales-systems.ca/gitlab issue mine
-glv tui                                # interactive browser
-glv report --since 7d --author "Name"  # weekly report
-glv standup --since 24h                # daily standup
+ggvalet hosts                              # list configured instances
+ggvalet issue mine                         # my open issues, default host
+ggvalet --host sc01-trt.thales-systems.ca/gitlab issue mine
+ggvalet tui                                # interactive browser
+ggvalet report --since 7d --author "Name"  # weekly report
+ggvalet standup --since 24h                # daily standup
 ```
 
 See `BUILD_PROMPT.md` for a complete from-scratch build guide, and the
-companion skill (`gitlabvalet-skill/`) for full command + recipe documentation.
+companion skill (`ggvalet-skill/`) for full command + recipe documentation.
 
 ---
 
@@ -125,14 +125,14 @@ issues:
 ```
 
 ```bash
-glv plan validate plan.yaml
-glv plan diff plan.yaml
-glv plan apply plan.yaml                         # dry-run
-glv plan apply plan.yaml --dry-run=false --yes   # starts a durable run
-glv plan status RUN_ID
-glv plan explain RUN_ID
-glv plan resume RUN_ID
-glv receipt export -o receipts.jsonl
+ggvalet plan validate plan.yaml
+ggvalet plan diff plan.yaml
+ggvalet plan apply plan.yaml                         # dry-run
+ggvalet plan apply plan.yaml --dry-run=false --yes   # starts a durable run
+ggvalet plan status RUN_ID
+ggvalet plan explain RUN_ID
+ggvalet plan resume RUN_ID
+ggvalet receipt export -o receipts.jsonl
 ```
 
 ---
@@ -153,13 +153,13 @@ adapter is selected at startup.
           │
      client.New(cfg)
           │
-     all glv commands
+     all ggvalet commands
 ```
 
 `client.New` selects the adapter via `providerfactory.NewFromConfig`, keyed on
 `GLVALET_PROVIDER` (`gitlab` default, or `github`).
 
-**GitLab adapter** (`internal/provider/gitlab/`) — exercised by every `glv`
+**GitLab adapter** (`internal/provider/gitlab/`) — exercised by every `ggvalet`
 command. The `issue`, `mr`, and `label` surfaces are fully host-neutral; the
 remaining commands (`epic`, `milestone`, `sync`, `search`, `standup`,
 `timeline`, `renovate`, `shields`, `tui`, `report`) are GitLab-specific.

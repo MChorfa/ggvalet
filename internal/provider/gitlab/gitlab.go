@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ckodex/gitlabvalet/internal/config"
-	"github.com/ckodex/gitlabvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/provider"
 	gl "github.com/xanzy/go-gitlab"
 )
 

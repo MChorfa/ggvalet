@@ -5,18 +5,18 @@
 Download and install the latest release for your platform:
 
 ```bash
-curl -L https://ckodex.github.io/gitlabvalet/install.sh | bash
+curl -L https://MChorfa.github.io/ggvalet/install.sh | bash
 ```
 
 Use a different install directory:
 
 ```bash
-curl -L https://ckodex.github.io/gitlabvalet/install.sh | INSTALL_DIR=~/.local/bin bash
+curl -L https://MChorfa.github.io/ggvalet/install.sh | INSTALL_DIR=~/.local/bin bash
 ```
 
 The installer detects your OS and architecture, queries the GitHub latest release
 API, downloads the matching archive, verifies the SHA-256 checksum, and installs
-`glv`.
+`ggvalet`.
 
 ## Manual install
 
@@ -29,12 +29,12 @@ os=$(uname -s | tr '[:upper:]' '[:lower:]')
 arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
 # Uses the latest release by default.
-tag=$(curl -fsL https://api.github.com/repos/ckodex/gitlabvalet/releases/latest \
+tag=$(curl -fsL https://api.github.com/repos/MChorfa/ggvalet/releases/latest \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
 
-curl -LO "https://github.com/ckodex/gitlabvalet/releases/download/${tag}/glv_${tag}_${os}_${arch}.tar.gz"
+curl -LO "https://github.com/MChorfa/ggvalet/releases/download/${tag}/glv_${tag}_${os}_${arch}.tar.gz"
 tar -xzf "glv_${tag}_${os}_${arch}.tar.gz"
-sudo install glv /usr/local/bin/
+sudo install ggvalet /usr/local/bin/
 ```
 
 ### Windows
@@ -42,18 +42,18 @@ sudo install glv /usr/local/bin/
 Download and install the latest release with PowerShell:
 
 ```powershell
-iwr -useb https://ckodex.github.io/gitlabvalet/install.ps1 | iex
+iwr -useb https://MChorfa.github.io/ggvalet/install.ps1 | iex
 ```
 
 Or, if you prefer to install manually, download `glv_<version>_windows_amd64.zip`
-from the [Releases](releases.md) page, extract `glv.exe`, and place it in a
+from the [Releases](releases.md) page, extract `ggvalet.exe`, and place it in a
 directory on your `PATH`.
 
 ## First run
 
 ```bash
-glv --version
-glv hosts
+ggvalet --version
+ggvalet hosts
 ```
 
 See the project [README](README.md) for a full feature map and configuration

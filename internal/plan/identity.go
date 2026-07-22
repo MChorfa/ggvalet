@@ -7,7 +7,7 @@ import (
 	"regexp"
 )
 
-var markerRegex = regexp.MustCompile(`<!-- glv:plan-id=([a-f0-9]{64}) -->`)
+var markerRegex = regexp.MustCompile(`<!-- ggvalet:plan-id=([a-f0-9]{64}) -->`)
 
 // MilestoneIdentity returns a deterministic content hash for a milestone.
 // Inputs: title (load-bearing), due_date (load-bearing for time-series milestones).
@@ -37,10 +37,10 @@ func IssueIdentity(i Issue) string {
 }
 
 // EmbedMarker appends an HTML-comment marker carrying the identity hash to body.
-// If body already contains a glv:plan-id marker, it is REPLACED (not duplicated).
-// Format: "\n\n<!-- glv:plan-id=<hash> -->\n"
+// If body already contains a ggvalet:plan-id marker, it is REPLACED (not duplicated).
+// Format: "\n\n<!-- ggvalet:plan-id=<hash> -->\n"
 func EmbedMarker(body, hash string) string {
-	marker := fmt.Sprintf("<!-- glv:plan-id=%s -->", hash)
+	marker := fmt.Sprintf("<!-- ggvalet:plan-id=%s -->", hash)
 
 	if markerRegex.MatchString(body) {
 		body = markerRegex.ReplaceAllString(body, marker)

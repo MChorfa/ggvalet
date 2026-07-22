@@ -16,10 +16,10 @@ build: clean
 vet: clean
 gofmt: clean
 ## cmd + provider + plan suites
-ok  	github.com/ckodex/gitlabvalet/cmd	(cached)
-ok  	github.com/ckodex/gitlabvalet/internal/provider	(cached)
-ok  	github.com/ckodex/gitlabvalet/internal/plan	(cached)
+ok  	github.com/MChorfa/ggvalet/cmd	(cached)
+ok  	github.com/MChorfa/ggvalet/internal/provider	(cached)
+ok  	github.com/MChorfa/ggvalet/internal/plan	(cached)
 
 ## Residual
 raw .GL. (non-test): 48 (was 52; mr.go 6->2)
-cmd TODO(ckodex): mr.go:31 (diff only, narrowed), label.go:115, issue.go:41
+cmd TODO(MChorfa): mr.go:31 (diff only, narrowed), label.go:115, issue.go:41

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ckodex/gitlabvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/spf13/cobra"
 )
 
@@ -13,14 +13,14 @@ import (
 // mr, label, plan), or local-only report generation — so every leaf under them
 // is safe under any host unless explicitly listed in hostBlockedLeaves.
 var hostNeutralPrefixes = []string{
-	"glv hosts", "glv completion",
-	"glv journal", "glv cache",
-	"glv receipt",
-	"glv plan",
-	"glv report",
-	"glv issue", // fully migrated to client.Provider (P8/P13/P16)
-	"glv mr",    // fully migrated to client.Provider (P10/P14/P15)
-	"glv label", // fully migrated to client.Provider (P9/P16)
+	"ggvalet hosts", "ggvalet completion",
+	"ggvalet journal", "ggvalet cache",
+	"ggvalet receipt",
+	"ggvalet plan",
+	"ggvalet report",
+	"ggvalet issue", // fully migrated to client.Provider (P8/P13/P16)
+	"ggvalet mr",    // fully migrated to client.Provider (P10/P14/P15)
+	"ggvalet label", // fully migrated to client.Provider (P9/P16)
 }
 
 // hostNeutralLeaves holds individual leaf commands that are host-neutral while
@@ -29,7 +29,7 @@ var hostNeutralPrefixes = []string{
 // per-leaf entries go here when a partially-migrated parent appears; see
 // docs/VWP-ATTESTATION.md RES-01.
 var hostNeutralLeaves = map[string]bool{
-	"glv": true, // root help / usage
+	"ggvalet": true, // root help / usage
 }
 
 // hostBlockedLeaves are leaves under a host-neutral prefix that still issue raw

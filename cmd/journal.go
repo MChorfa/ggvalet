@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ckodex/gitlabvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/journal"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
@@ -28,10 +28,10 @@ func journalShowCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "show",
 		Short: "Show journal entries (default: last 24h)",
-		Example: `  glv journal show --since 7d
-  glv journal show --since 7d --host gitlab.thalesdigital.io
-  glv journal show --since 30d --entity epic
-  glv journal show --errors`,
+		Example: `  ggvalet journal show --since 7d
+  ggvalet journal show --since 7d --host gitlab.thalesdigital.io
+  ggvalet journal show --since 30d --entity epic
+  ggvalet journal show --errors`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			f := journal.Filter{}
 

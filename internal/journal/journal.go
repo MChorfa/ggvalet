@@ -1,5 +1,5 @@
 // Package journal provides an append-only JSONL activity ledger.
-// Every GitLab operation performed through gitlabvalet is recorded here so the
+// Every GitLab operation performed through ggvalet is recorded here so the
 // operator can generate time-boxed manager reports without touching the API again.
 package journal
 

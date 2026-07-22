@@ -6,7 +6,7 @@
 
 ## Context
 
-The original spec (`BUILD_PROMPT.md`) scoped `glv` to GitLab only. All
+The original spec (`BUILD_PROMPT.md`) scoped `ggvalet` to GitLab only. All
 `cmd/*` commands consumed the GitLab SDK directly through
 `internal/client/client.go`, which holds a `*gl.Client` alongside the
 journal and cache. That design couples every command to the `go-gitlab` SDK

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/ckodex/gitlabvalet/internal/state"
+	"github.com/MChorfa/ggvalet/internal/state"
 )
 
 type Transport struct {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vwp-lint.sh — lightweight CKODEX VWP v0.1 (§26) governance gate for glv.
+# vwp-lint.sh — lightweight CKODEX VWP v0.1 (§26) governance gate for ggvalet.
 #
 # Classification: [S] tool / [A] impl. This is a deliberately-bounded grep
 # heuristic, NOT a complete NLP classifier. It enforces the mechanically-cheap

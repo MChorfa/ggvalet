@@ -1,5 +1,5 @@
-BINARY := glv
-PKG := github.com/ckodex/gitlabvalet
+BINARY := ggvalet
+PKG := github.com/MChorfa/ggvalet
 DIST := dist
 # Version comes from the git tag (GA = a real semver tag, e.g. v1.0.0).
 # The fallback marks an untagged dev build, never a release.
@@ -53,7 +53,7 @@ tidy:
 	go mod tidy
 
 clean:
-	rm -f $(BINARY) gitlabvalet
+	rm -f $(BINARY) glv gitlabvalet
 	rm -rf dist/ site/ public/
 	rm -f sbom.cdx.json
 	rm -f cover.out coverage.txt p19-cover.out p19-coverage.txt

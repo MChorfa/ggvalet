@@ -3,10 +3,10 @@ NOTE: client/, provider/gitlab, provider/github use httptest loopback servers
       which this sandbox denies (bind: operation not permitted). Those packages
       are CI-verified (golang container allows loopback), not sandbox-verified.
 --- per-package (non-loopback) ---
-ok  	github.com/ckodex/gitlabvalet/internal/cache	(cached)	coverage: 92.9% of statements
-ok  	github.com/ckodex/gitlabvalet/internal/config	(cached)	coverage: 84.8% of statements
-ok  	github.com/ckodex/gitlabvalet/internal/journal	(cached)	coverage: 95.7% of statements
-ok  	github.com/ckodex/gitlabvalet/internal/parallel	(cached)	coverage: 100.0% of statements
-ok  	github.com/ckodex/gitlabvalet/internal/plan	(cached)	coverage: 86.7% of statements
-ok  	github.com/ckodex/gitlabvalet/internal/providerfactory	(cached)	coverage: 100.0% of statements
-ok  	github.com/ckodex/gitlabvalet/internal/report	(cached)	coverage: 98.0% of statements
+ok  	github.com/MChorfa/ggvalet/internal/cache	(cached)	coverage: 92.9% of statements
+ok  	github.com/MChorfa/ggvalet/internal/config	(cached)	coverage: 84.8% of statements
+ok  	github.com/MChorfa/ggvalet/internal/journal	(cached)	coverage: 95.7% of statements
+ok  	github.com/MChorfa/ggvalet/internal/parallel	(cached)	coverage: 100.0% of statements
+ok  	github.com/MChorfa/ggvalet/internal/plan	(cached)	coverage: 86.7% of statements
+ok  	github.com/MChorfa/ggvalet/internal/providerfactory	(cached)	coverage: 100.0% of statements
+ok  	github.com/MChorfa/ggvalet/internal/report	(cached)	coverage: 98.0% of statements

@@ -9,7 +9,7 @@
 --- PASS: TestEnsureHostNeutral_NonGitLab_BlocksRawSDKCommands (0.00s)
 --- PASS: TestEnsureHostNeutral_NonGitLab_AllowsMigratedAndNeutral (0.00s)
 PASS
-ok  	github.com/ckodex/gitlabvalet/cmd	0.367s
+ok  	github.com/MChorfa/ggvalet/cmd	0.367s
 
 ## Phase 2b/2c — ListMyIssues slice (unblocks cmd/issue.go:129 'issue mine')
 - provider.go: +ListMyIssuesOptions, +ListMyIssues on Provider interface.
@@ -25,14 +25,14 @@ vet: clean (compiles all _test.go, incl. new httptest tests)
 gofmt: clean
 
 ## Sandbox-runnable test packages
-ok  	github.com/ckodex/gitlabvalet/cmd	(cached)
-ok  	github.com/ckodex/gitlabvalet/internal/provider	(cached)
-ok  	github.com/ckodex/gitlabvalet/internal/plan	(cached)
+ok  	github.com/MChorfa/ggvalet/cmd	(cached)
+ok  	github.com/MChorfa/ggvalet/internal/provider	(cached)
+ok  	github.com/MChorfa/ggvalet/internal/plan	(cached)
 ## Loopback packages test-COMPILE (run in CI; sandbox denies 127.0.0.1 bind):
-ok  	github.com/ckodex/gitlabvalet/internal/provider/gitlab	(cached) [no tests to run]
-ok  	github.com/ckodex/gitlabvalet/internal/provider/github	(cached) [no tests to run]
-ok  	github.com/ckodex/gitlabvalet/internal/client	(cached) [no tests to run]
+ok  	github.com/MChorfa/ggvalet/internal/provider/gitlab	(cached) [no tests to run]
+ok  	github.com/MChorfa/ggvalet/internal/provider/github	(cached) [no tests to run]
+ok  	github.com/MChorfa/ggvalet/internal/client	(cached) [no tests to run]
 
 ## Residual after this slice
-cmd-layer TODO(ckodex): 3 (mr.go:31, label.go:115, issue.go:41) + plan.go:148 runtime note
+cmd-layer TODO(MChorfa): 3 (mr.go:31, label.go:115, issue.go:41) + plan.go:148 runtime note
 raw .GL. (non-test): 52 (was 53; issue.go 2->1)

@@ -1,7 +1,7 @@
-# GA Milestone Report — GitLab Valet (`glv`)
+# GA Milestone Report — ggvalet (`ggvalet`)
 
 - **Date:** 2026-06-02
-- **Scope:** GA readiness for `glv` (GitLab path GA; GitHub `[S]` experimental).
+- **Scope:** GA readiness for `ggvalet` (GitLab path GA; GitHub `[S]` experimental).
 - **Governance bar:** CKODEX VWP §26 evidence gates + DoD². CATM `[A]` threat
   detectors are out of scope (per the approved GA plan).
 
@@ -30,7 +30,7 @@ needs a live-instance integration job (`GLVALET_GITHUB_ENABLED=true` + token).
 | CI evidence gates | `.gitlab-ci.yml` (test+coverage+deps+vuln+secrets+sbom+vwp), `scripts/vwp-lint.sh`, MR template | `docs/evidence/p12-ci-gates.txt` |
 | Provider migration | `issue`/`mr`/`label` 100% `Provider`-based; `cmd/hostguard.go` fail-loud guard | `docs/evidence/p13–p16` |
 | Signed release | `make checksums`/`sbom`/`release`, CI `release` stage (cosign keyless + SBOM) | `docs/evidence/p17-release-pipeline.txt` |
-| GA cutover | `glv --version` wired; README host matrix + verify docs; root-skip removed | this report |
+| GA cutover | `ggvalet --version` wired; README host matrix + verify docs; root-skip removed | this report |
 
 ## Freshness
 

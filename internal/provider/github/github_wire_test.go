@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ckodex/gitlabvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/provider"
 )
 
 // ─── ListMergeRequests ────────────────────────────────────────────────────────

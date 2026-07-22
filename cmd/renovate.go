@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ckodex/gitlabvalet/internal/journal"
-	"github.com/ckodex/gitlabvalet/internal/parallel"
+	"github.com/MChorfa/ggvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/parallel"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	gl "github.com/xanzy/go-gitlab"
@@ -190,9 +190,9 @@ func renovateApproveCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "approve",
 		Short: "Bulk-approve Renovate MRs by bump type",
-		Example: `  glv renovate approve --project g/p --bump patch        # approve all patches
-  glv renovate approve --project g/p --bump minor,patch  # approve minor + patch
-  glv renovate approve --project g/p --bump all          # approve everything (careful!)`,
+		Example: `  ggvalet renovate approve --project g/p --bump patch        # approve all patches
+  ggvalet renovate approve --project g/p --bump minor,patch  # approve minor + patch
+  ggvalet renovate approve --project g/p --bump all          # approve everything (careful!)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if project == "" {
 				project = cfg.DefaultProject

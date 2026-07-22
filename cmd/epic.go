@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ckodex/gitlabvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/journal"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	gl "github.com/xanzy/go-gitlab"

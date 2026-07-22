@@ -18,8 +18,8 @@ import (
 
 	gh "github.com/google/go-github/v66/github"
 
-	"github.com/ckodex/gitlabvalet/internal/config"
-	"github.com/ckodex/gitlabvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/provider"
 )
 
 // ErrFeatureDisabled is returned when the GitHub provider is constructed

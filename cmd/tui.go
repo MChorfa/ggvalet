@@ -1,8 +1,8 @@
-// cmd/tui.go — interactive terminal UI for GitLab Valet.
+// cmd/tui.go — interactive terminal UI for ggvalet.
 //
 // Layout (80×24 example):
 //
-//	┌─ GitLab Valet ────────────── host: gitlab.thalesdigital.io ─┐
+//	┌─ ggvalet ────────────── host: gitlab.thalesdigital.io ─┐
 //	│  [Issues]  Epics  Milestones  Journal                       │
 //	├───────────────────────────┬──────────────────────────────────┤
 //	│  ● #42 Implement OIDC…   │  #42 Implement OIDC refresh      │
@@ -30,7 +30,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ckodex/gitlabvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/journal"
 	"github.com/spf13/cobra"
 	gl "github.com/xanzy/go-gitlab"
 )
@@ -436,7 +436,7 @@ func (m *tuiModel) switchTab() tea.Cmd {
 
 func (m tuiModel) View() string {
 	if !m.ready {
-		return "\n  Loading GitLab Valet…"
+		return "\n  Loading ggvalet…"
 	}
 	header := m.viewHeader()
 	footer := m.viewFooter()
@@ -484,7 +484,7 @@ func (m tuiModel) viewHeader() string {
 	tabRow := strings.Join(tabs, "")
 	hostLabel := "  host: " + lipgloss.NewStyle().Foreground(tuiPrimary).Render(shortHostname(m.host))
 	title := tuiHeaderStyle.Width(m.width).Render(
-		lipgloss.NewStyle().Foreground(tuiAccent).Bold(true).Render("GitLab Valet") + hostLabel)
+		lipgloss.NewStyle().Foreground(tuiAccent).Bold(true).Render("ggvalet") + hostLabel)
 	tabLine := lipgloss.NewStyle().Background(lipgloss.Color("#111827")).Width(m.width).Render(tabRow)
 	return title + "\n" + tabLine
 }

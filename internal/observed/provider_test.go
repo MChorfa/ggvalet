@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ckodex/gitlabvalet/internal/provider"
-	"github.com/ckodex/gitlabvalet/internal/state"
+	"github.com/MChorfa/ggvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/state"
 )
 
 type completeProvider struct{ fakeProvider }

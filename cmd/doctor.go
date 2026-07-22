@@ -6,11 +6,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ckodex/gitlabvalet/internal/config"
-	"github.com/ckodex/gitlabvalet/internal/journal"
-	"github.com/ckodex/gitlabvalet/internal/provider"
-	"github.com/ckodex/gitlabvalet/internal/providerfactory"
-	"github.com/ckodex/gitlabvalet/internal/state"
+	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/providerfactory"
+	"github.com/MChorfa/ggvalet/internal/state"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -18,13 +18,13 @@ import (
 func doctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
-		Short: "Check glv configuration, local state, and API reachability",
-		Long: `Diagnose the glv environment.
+		Short: "Check ggvalet configuration, local state, and API reachability",
+		Long: `Diagnose the ggvalet environment.
 
 Checks performed:
   1. Configuration loads (glab config + env + flags).
-  2. State database (~/.gitlabvalet/state.db) is writable.
-  3. Journal file (~/.gitlabvalet/journal.jsonl) is writable.
+  2. State database (~/.ggvalet/state.db) is writable.
+  3. Journal file (~/.ggvalet/journal.jsonl) is writable.
   4. Provider builds (gitlab or github).
   5. One lightweight API call confirms the token is accepted by the host.
 
@@ -40,7 +40,7 @@ This command never writes to the journal or creates remote resources.`,
 
 func runDoctor() error {
 	okChecks := true
-	header := color.CyanString("── glv doctor ──")
+	header := color.CyanString("── ggvalet doctor ──")
 	fmt.Fprintln(os.Stderr, header)
 
 	// 1. Configuration

@@ -9,19 +9,19 @@
 ## LOCALLY VERIFIED (sandbox, signing is CI-only):
 ### make release built 5 cross binaries + SHA256SUMS + CycloneDX SBOM
 ### checksum self-verification (sha256sum -c / shasum -c):
-glv-darwin-amd64: OK
-glv-darwin-arm64: OK
-glv-linux-amd64: OK
-glv-linux-arm64: OK
-glv-windows-amd64.exe: OK
+ggvalet-darwin-amd64: OK
+ggvalet-darwin-arm64: OK
+ggvalet-linux-amd64: OK
+ggvalet-linux-arm64: OK
+ggvalet-windows-amd64.exe: OK
 ### SBOM validity:
   bomFormat=CycloneDX specVersion=1.6 components=220
 ### SHA256SUMS:
-  751e6d43df0e736f999130f50c14403918c8bba1fe7f9c9a5ebc197b86d9d918  glv-darwin-amd64
-  7e3c7868e592b481949e53752a60a6990df4ef86f71eb20725c736fd9ecaca15  glv-darwin-arm64
-  7a72eb98ca61f75c36d97eb8833c24a5cb08ffcfda0dbc6260341ea26eb2926a  glv-linux-amd64
-  7977a82da11b3b3d0a15b02073c897842ec2bfd3322582f18a40a4de567312dd  glv-linux-arm64
-  0bc0dd526bee7897d53cb8d3f2c0531559474c93829146e59a198a33e334bbe9  glv-windows-amd64.exe
+  751e6d43df0e736f999130f50c14403918c8bba1fe7f9c9a5ebc197b86d9d918  ggvalet-darwin-amd64
+  7e3c7868e592b481949e53752a60a6990df4ef86f71eb20725c736fd9ecaca15  ggvalet-darwin-arm64
+  7a72eb98ca61f75c36d97eb8833c24a5cb08ffcfda0dbc6260341ea26eb2926a  ggvalet-linux-amd64
+  7977a82da11b3b3d0a15b02073c897842ec2bfd3322582f18a40a4de567312dd  ggvalet-linux-arm64
+  0bc0dd526bee7897d53cb8d3f2c0531559474c93829146e59a198a33e334bbe9  ggvalet-windows-amd64.exe
 
 ## Classification:
   release pipeline definition + local artifact assembly (cross/checksums/sbom): [C] verified here

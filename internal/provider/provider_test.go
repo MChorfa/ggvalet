@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ckodex/gitlabvalet/internal/provider"
-	"github.com/ckodex/gitlabvalet/internal/provider/gitlab"
+	"github.com/MChorfa/ggvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/provider/gitlab"
 )
 
 // ─── sentinel ─────────────────────────────────────────────────────────────────

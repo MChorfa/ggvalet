@@ -1,14 +1,14 @@
 # p11 marker + raw-SDK inventory — 2026-06-02T13:37:23Z
 ## Open completion markers (non-test):
 cmd/plan.go:148:			fmt.Fprintf(os.Stderr, "note: epic linkage for issue [%s] not yet wired (Phase 3)\n", i.ID)
-cmd/mr.go:31:// TODO(ckodex): create + close are migrated to glClient.Provider.*. The
-cmd/label.go:115:		// TODO(ckodex): migrate to the Provider interface once syncClients builds
-cmd/issue.go:41:		// TODO(ckodex): migrate to glClient.Provider.ListIssues once
-cmd/issue.go:129:		// TODO(ckodex): no provider equivalent yet — this uses the GitLab
-internal/provider/github/github.go:410:// TODO(ckodex): implement repo-scoped milestone creation when plan.Target supports repo refs.
-internal/provider/github/github.go:416:// TODO(ckodex): consider mapping to tracking issue with checklist if user opts in.
-internal/provider/github/github.go:423:// TODO(ckodex): implement repo-scoped milestone listing when plan.Target supports repo refs.
-internal/provider/github/github.go:429:// TODO(ckodex): consider mapping to label-filtered issues if user opts in.
+cmd/mr.go:31:// TODO(MChorfa): create + close are migrated to glClient.Provider.*. The
+cmd/label.go:115:		// TODO(MChorfa): migrate to the Provider interface once syncClients builds
+cmd/issue.go:41:		// TODO(MChorfa): migrate to glClient.Provider.ListIssues once
+cmd/issue.go:129:		// TODO(MChorfa): no provider equivalent yet — this uses the GitLab
+internal/provider/github/github.go:410:// TODO(MChorfa): implement repo-scoped milestone creation when plan.Target supports repo refs.
+internal/provider/github/github.go:416:// TODO(MChorfa): consider mapping to tracking issue with checklist if user opts in.
+internal/provider/github/github.go:423:// TODO(MChorfa): implement repo-scoped milestone listing when plan.Target supports repo refs.
+internal/provider/github/github.go:429:// TODO(MChorfa): consider mapping to label-filtered issues if user opts in.
 
 ## Raw client.GL.* call sites per cmd file (provider-migration residual):
 cmd/epic.go:5

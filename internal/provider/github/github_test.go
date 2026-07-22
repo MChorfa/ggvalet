@@ -14,9 +14,9 @@ import (
 
 	gh "github.com/google/go-github/v66/github"
 
-	"github.com/ckodex/gitlabvalet/internal/config"
-	"github.com/ckodex/gitlabvalet/internal/provider"
-	githubprov "github.com/ckodex/gitlabvalet/internal/provider/github"
+	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/provider"
+	githubprov "github.com/MChorfa/ggvalet/internal/provider/github"
 )
 
 // ─── static interface check ───────────────────────────────────────────────────

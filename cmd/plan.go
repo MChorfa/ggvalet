@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ckodex/gitlabvalet/internal/plan"
-	"github.com/ckodex/gitlabvalet/internal/provider"
-	"github.com/ckodex/gitlabvalet/internal/reconcile"
+	"github.com/MChorfa/ggvalet/internal/plan"
+	"github.com/MChorfa/ggvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/reconcile"
 	"github.com/spf13/cobra"
 )
 
@@ -64,7 +64,7 @@ func planApplyCmd() *cobra.Command {
 			}
 			info("reconciliation run: %s", runID)
 			if err := engine.Execute(cmd.Context(), runID); err != nil {
-				return fmt.Errorf("run %s stopped: %w (resume with: glv plan resume %s)", runID, err, runID)
+				return fmt.Errorf("run %s stopped: %w (resume with: ggvalet plan resume %s)", runID, err, runID)
 			}
 			ok("Plan applied: run %s", runID)
 			return nil

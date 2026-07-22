@@ -5,11 +5,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ckodex/gitlabvalet/internal/client"
-	"github.com/ckodex/gitlabvalet/internal/config"
-	"github.com/ckodex/gitlabvalet/internal/journal"
-	"github.com/ckodex/gitlabvalet/internal/provider"
-	"github.com/ckodex/gitlabvalet/internal/report"
+	"github.com/MChorfa/ggvalet/internal/client"
+	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/report"
 	"github.com/spf13/cobra"
 )
 
@@ -19,12 +19,12 @@ func reportCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "report",
 		Short: "Generate a manager-ready activity report from the journal",
-		Example: `  glv report --since 7d                       # print markdown to stdout
-  glv report --since 7d --until 1d            # last week, excluding today
-  glv report --since 7d --output weekly.md    # write to file
-  glv report --since 30d --format plain       # plain text
-  glv report --since 7d --author "Noufel C."  # include your name
-  glv report push --since 7d \
+		Example: `  ggvalet report --since 7d                       # print markdown to stdout
+  ggvalet report --since 7d --until 1d            # last week, excluding today
+  ggvalet report --since 7d --output weekly.md    # write to file
+  ggvalet report --since 30d --format plain       # plain text
+  ggvalet report --since 7d --author "Noufel C."  # include your name
+  ggvalet report push --since 7d \
     --dst-host sc01-trt.thales-systems.ca/gitlab \
     --dst-project management/status-reports   # push as issue`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -90,14 +90,14 @@ func reportPushCmd() *cobra.Command {
 		Use:   "push",
 		Short: "Post the activity report as an issue on a target project",
 		Example: `  # Post weekly report to a management board on sc01
-  glv report push \
+  ggvalet report push \
     --since 7d \
     --author "Noufel Chorfa" \
     --dst-host sc01-trt.thales-systems.ca/gitlab \
     --dst-project management/weekly-status
 
   # Scope the report to one instance, push to another
-  glv report push \
+  ggvalet report push \
     --report-host gitlab.thalesdigital.io \
     --dst-host    sc01-trt.thales-systems.ca/gitlab \
     --dst-project management/reports`,

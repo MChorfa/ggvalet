@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ckodex/gitlabvalet/internal/parallel"
+	"github.com/MChorfa/ggvalet/internal/parallel"
 	"github.com/spf13/cobra"
 	gl "github.com/xanzy/go-gitlab"
 )
@@ -61,9 +61,9 @@ func timelineCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "timeline",
 		Short: "Gantt-style timeline of epics and milestones",
-		Example: `  glv timeline --project group/project --group group
-  glv timeline --since 2026-01-01 --until 2026-12-31
-  glv timeline --all-hosts`,
+		Example: `  ggvalet timeline --project group/project --group group
+  ggvalet timeline --since 2026-01-01 --until 2026-12-31
+  ggvalet timeline --all-hosts`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if project == "" {
 				project = cfg.DefaultProject

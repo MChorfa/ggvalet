@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ckodex/gitlabvalet/internal/client"
-	"github.com/ckodex/gitlabvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/client"
+	"github.com/MChorfa/ggvalet/internal/config"
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
@@ -20,21 +20,21 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "glv",
-	Short: "GitLab Valet — multi-instance GitLab agent with automatic activity journaling",
+	Use:   "ggvalet",
+	Short: "ggvalet — multi-instance GitLab agent with automatic activity journaling",
 	Long: color.CyanString(`
 ╔═══════════════════════════════════════════════════╗
-║          GitLab Valet  (ckodex/gitlabvalet)       ║
+║          ggvalet  (MChorfa/ggvalet)       ║
 ║  Manage · Record · Report  — never miss a thing  ║
 ╚═══════════════════════════════════════════════════╝`) + `
 
 Reads your glab CLI config (~/.config/glab-cli/config.yml) automatically.
 Tokens, TLS settings, and API hosts are all inherited from glab — no extra setup.
 
-  glv hosts                                          # list all configured instances
-  glv issue mine                                     # issues on default host
-  glv --host sc01-trt.thales-systems.ca/gitlab issue mine
-  glv report --since 7d --author "Noufel Chorfa"    # manager report
+  ggvalet hosts                                          # list all configured instances
+  ggvalet issue mine                                     # issues on default host
+  ggvalet --host sc01-trt.thales-systems.ca/gitlab issue mine
+  ggvalet report --since 7d --author "Noufel Chorfa"    # manager report
 `,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if cmd.Name() == "completion" || cmd.Name() == "__complete" {
@@ -73,7 +73,7 @@ func Execute(version string) {
 	// The version check short-circuits before PersistentPreRunE, so it prints
 	// without loading config or building a client.
 	rootCmd.Version = version
-	rootCmd.SetVersionTemplate("glv {{.Version}}\n")
+	rootCmd.SetVersionTemplate("ggvalet {{.Version}}\n")
 
 	rootCmd.PersistentFlags().StringVarP(&hostFlag, "host", "H", "",
 		"GitLab instance hostname (overrides glab default)")
@@ -176,7 +176,7 @@ func hostsCmd() *cobra.Command {
 			if provider == "github" {
 				printGitHubHints()
 			} else {
-				fmt.Printf("\n%s  glv --host <hostname> <command>\n",
+				fmt.Printf("\n%s  ggvalet --host <hostname> <command>\n",
 					colorDim("To switch:"))
 				fmt.Printf("%s  export GLVALET_HOST=%s\n\n",
 					colorDim("Persistent:"), defaultHost)

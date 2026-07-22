@@ -1,8 +1,8 @@
 # Binaries
-glv
-/glv
-gitlabvalet
-/gitlabvalet
+ggvalet
+/ggvalet
+ggvalet
+/ggvalet
 *.exe
 *.test
 *.out
@@ -19,7 +19,7 @@ vendor/
 *.a
 
 # Local runtime data
-.gitlabvalet/
+.ggvalet/
 journal.jsonl
 cache/
 

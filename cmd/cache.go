@@ -3,7 +3,7 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/ckodex/gitlabvalet/internal/cache"
+	"github.com/MChorfa/ggvalet/internal/cache"
 	"github.com/spf13/cobra"
 )
 

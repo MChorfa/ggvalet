@@ -1,8 +1,8 @@
-# VWP Self-Attestation — GitLab Valet (`glv`)
+# VWP Self-Attestation — ggvalet (`ggvalet`)
 
 - **Generated:** 2026-07-15 (supersedes the 2026-06-02 P0–P18 attestation)
 - **Source spec:** CKODEX VWP v0.1 §26.E (`CLAUDE.md`)
-- **Scope:** Phases P0–P19 of the GitLab Valet implementation, including the
+- **Scope:** Phases P0–P19 of the ggvalet implementation, including the
   GitLab-first work reconciler and durable receipt substrate.
 - **Self-signing:** unsigned in-repo; `make attest-sign` cosign-signs this file
   (keyless in CI via `SIGSTORE_ID_TOKEN`). Signing executes at the GA tag, alongside
@@ -40,7 +40,7 @@
 | P15 | `provider.FileDiff` + `GetMergeRequestDiff` added (both adapters + mocks + TDD tests); `cmd/mr.go` diff migrated and the GitLab SDK import removed — `mr` is now 100% Provider-based | C |
 | P16 | `ListIssuesOptions.Milestone` (title) added; `cmd/issue.go` list + `cmd/label.go` sync migrated to `Provider`; both files drop the GitLab SDK import. **All host-neutral command surfaces (issue/mr/label) are now 100% Provider-based; zero command-layer migration TODOs remain.** | C |
 | P17 | Release pipeline: `make checksums`/`sbom`/`release` targets + tag-driven CI `release` stage (cosign keyless via GitLab OIDC). Local assembly verified (5 cross binaries + verified SHA256SUMS + valid CycloneDX SBOM, 220 components); cosign sign/verify runs on first tag | C (assembly) / S (signing) |
-| P18 | GA cutover: `glv --version` wired (`main.version` ldflag now has a symbol; Cobra `--version`/`-v`); README host-capability matrix + cosign-verify docs + stale "not routed" claim corrected; `journal_test.go` root-skip removed (de-skipped via ENOTDIR, runs everywhere); `docs/milestone-ga.md` + `make attest-sign` | C |
+| P18 | GA cutover: `ggvalet --version` wired (`main.version` ldflag now has a symbol; Cobra `--version`/`-v`); README host-capability matrix + cosign-verify docs + stale "not routed" claim corrected; `journal_test.go` root-skip removed (de-skipped via ENOTDIR, runs everywhere); `docs/milestone-ga.md` + `make attest-sign` | C |
 | P19 | SQLite intent/outcome receipts, one-time JSONL import/export, plan-v2 dependency graph, GitLab epic linkage, and stop-and-resume reconciliation | C |
 | DEF-01 | `client.New` flag/env routing to the selected provider | **C (done in P8)** |
 | DEF-02 | Signed release artifacts (cosign + SBOM) | **pipeline C / signature S (P17)** |

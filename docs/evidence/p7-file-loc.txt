@@ -1,2 +1,2 @@
-     273 /Users/mchorfa/Documents/projects/runbase/ckodex-glv-agent/gitlabvalet-package/gitlabvalet/internal/provider/github/github_integration_test.go
+     273 /Users/mchorfa/Documents/projects/runbase/MChorfa-ggvalet-agent/ggvalet-package/ggvalet/internal/provider/github/github_integration_test.go
 EXIT=0

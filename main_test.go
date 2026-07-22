@@ -7,7 +7,7 @@ import (
 
 func TestMainVersion(t *testing.T) {
 	version = "test"
-	os.Args = []string{"glv", "--version"}
+	os.Args = []string{"ggvalet", "--version"}
 
 	// main() will run Execute with the --version flag.
 	main()

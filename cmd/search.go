@@ -7,8 +7,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/ckodex/gitlabvalet/internal/client"
-	"github.com/ckodex/gitlabvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/client"
+	"github.com/MChorfa/ggvalet/internal/config"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	gl "github.com/xanzy/go-gitlab"
@@ -22,10 +22,10 @@ func searchCmd() *cobra.Command {
 		Use:   "search <query>",
 		Short: "Full-text search across issues, epics, MRs — optionally on all instances",
 		Args:  cobra.MinimumNArgs(1),
-		Example: `  glv search "OIDC token"
-  glv search "JWT" --scope issues --project group/project
-  glv search "security" --all-hosts
-  glv search "sprint" --scope milestones`,
+		Example: `  ggvalet search "OIDC token"
+  ggvalet search "JWT" --scope issues --project group/project
+  ggvalet search "security" --all-hosts
+  ggvalet search "sprint" --scope milestones`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := args[0]
 

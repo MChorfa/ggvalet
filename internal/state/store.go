@@ -1,4 +1,4 @@
-// Package state owns GitLab Valet's transactional operational state.
+// Package state owns ggvalet's transactional operational state.
 package state
 
 import (
@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ckodex/gitlabvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/journal"
 	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
 )

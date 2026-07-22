@@ -9,17 +9,17 @@ build: clean
 vet: clean
 gofmt: clean
 ## sandbox suites
-ok  	github.com/ckodex/gitlabvalet/cmd	(cached)
-ok  	github.com/ckodex/gitlabvalet/internal/provider	(cached)
-ok  	github.com/ckodex/gitlabvalet/internal/plan	(cached)
+ok  	github.com/MChorfa/ggvalet/cmd	(cached)
+ok  	github.com/MChorfa/ggvalet/internal/provider	(cached)
+ok  	github.com/MChorfa/ggvalet/internal/plan	(cached)
 ## github sandbox ErrUnsupported tests
 --- FAIL: TestGitHub_ListUsers_EmptySearchReturnsErrUnsupported (0.00s)
 ## loopback compile (CI runs httptest)
-ok  	github.com/ckodex/gitlabvalet/internal/provider/gitlab	(cached) [no tests to run]
-ok  	github.com/ckodex/gitlabvalet/internal/provider/github	(cached) [no tests to run]
+ok  	github.com/MChorfa/ggvalet/internal/provider/gitlab	(cached) [no tests to run]
+ok  	github.com/MChorfa/ggvalet/internal/provider/github	(cached) [no tests to run]
 
 ## MILESTONE: command-layer provider migration COMPLETE for host-neutral surfaces.
-cmd TODO(ckodex): 0 (all cleared). raw .GL.: 42 — ALL in GitLab-only commands:
+cmd TODO(MChorfa): 0 (all cleared). raw .GL.: 42 — ALL in GitLab-only commands:
   9  cmd/sync.go
   6  cmd/shields.go
   5  cmd/epic.go

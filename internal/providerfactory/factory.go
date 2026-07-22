@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ckodex/gitlabvalet/internal/config"
-	"github.com/ckodex/gitlabvalet/internal/provider"
-	"github.com/ckodex/gitlabvalet/internal/provider/github"
-	"github.com/ckodex/gitlabvalet/internal/provider/gitlab"
+	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/provider/github"
+	"github.com/MChorfa/ggvalet/internal/provider/gitlab"
 )
 
 // NewFromConfig constructs a provider.Provider based on cfg.Provider, falling

@@ -1,5 +1,5 @@
 version: 2
-project_name: glv
+project_name: ggvalet
 
 before:
   hooks:
@@ -7,7 +7,7 @@ before:
     - syft dir:. -o cyclonedx-json=sbom.cdx.json
 
 builds:
-  - id: glv
+  - id: ggvalet
     env:
       - CGO_ENABLED=0
     goos:
@@ -25,7 +25,7 @@ builds:
     main: .
 
 archives:
-  - id: glv
+  - id: ggvalet
     formats:
       - tar.gz
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
@@ -78,7 +78,7 @@ gitlab_urls:
 release:
   gitlab:
     owner: ""
-    name: '{{ .Env.CI_PROJECT_ID | default "ckodex/gitlabvalet" }}'
+    name: '{{ .Env.CI_PROJECT_ID | default "MChorfa/ggvalet" }}'
   extra_files:
     - glob: ./sbom.cdx.json
   include_meta: true

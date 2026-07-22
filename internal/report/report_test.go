@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ckodex/gitlabvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/journal"
 )
 
 func TestGenerate_EmptyEntries_Markdown(t *testing.T) {

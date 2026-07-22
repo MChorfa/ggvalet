@@ -11,8 +11,8 @@
 ## build ./...  -> exit 0    ## go vet ./...  -> exit 0    ## gofmt -l .  -> clean
 
 ## go test ./cmd/ ./internal/provider/  (no httptest)
-ok  github.com/ckodex/gitlabvalet/cmd
-ok  github.com/ckodex/gitlabvalet/internal/provider
+ok  github.com/MChorfa/ggvalet/cmd
+ok  github.com/MChorfa/ggvalet/internal/provider
 
 ## Full suite: 9 ok; 3 FAIL (internal/client, provider/github, provider/gitlab).
 All FAIL = httptest.newLocalListener bind panic (sandbox). Zero want/got failures,

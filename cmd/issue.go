@@ -5,8 +5,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/ckodex/gitlabvalet/internal/journal"
-	"github.com/ckodex/gitlabvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )

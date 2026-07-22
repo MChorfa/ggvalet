@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ckodex/gitlabvalet/internal/client"
-	"github.com/ckodex/gitlabvalet/internal/config"
-	"github.com/ckodex/gitlabvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/client"
+	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/journal"
 )
 
 // setupTestClient builds a real Client wired to an httptest GitLab server and

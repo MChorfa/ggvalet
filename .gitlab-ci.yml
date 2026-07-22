@@ -1,4 +1,4 @@
-# GitLab Valet CI — GA evidence gates (CKODEX DoD² + VWP §26).
+# ggvalet CI — GA evidence gates (CKODEX DoD² + VWP §26).
 # Every stage maps to a release-blocking gate; CI fails closed.
 stages: [verify, test, security, governance, build, release]
 

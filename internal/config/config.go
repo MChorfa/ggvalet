@@ -1,4 +1,4 @@
-// Package config loads runtime configuration for GitLab Valet.
+// Package config loads runtime configuration for ggvalet.
 //
 // Host selection order (first wins):
 //  1. --host flag
@@ -92,7 +92,7 @@ type Config struct {
 	DefaultProject string
 	DefaultGroup   string
 
-	// All hosts loaded from glab config — used by `glv hosts` and flag validation.
+	// All hosts loaded from glab config — used by `ggvalet hosts` and flag validation.
 	Hosts map[string]*HostConfig
 }
 
@@ -116,7 +116,7 @@ func providerFromEnv() string {
 }
 
 // loadGitHubConfig builds a Config for the GitHub provider when no GitLab host
-// is required. It still carries the Hosts map so `glv hosts` can display any
+// is required. It still carries the Hosts map so `ggvalet hosts` can display any
 // configured glab instances alongside the GitHub selection.
 func loadGitHubConfig(hosts map[string]*HostConfig, fallbackToken string) (*Config, error) {
 	githubToken := firstNonEmpty(os.Getenv("GLVALET_GITHUB_TOKEN"), fallbackToken)
@@ -379,7 +379,7 @@ func journalPath() string {
 		return p
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".gitlabvalet", "journal.jsonl")
+	return filepath.Join(home, ".ggvalet", "journal.jsonl")
 }
 
 func cachePath() string {
@@ -387,7 +387,7 @@ func cachePath() string {
 		return p
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".gitlabvalet", "cache")
+	return filepath.Join(home, ".ggvalet", "cache")
 }
 
 func statePath() string {
@@ -395,7 +395,7 @@ func statePath() string {
 		return p
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".gitlabvalet", "state.db")
+	return filepath.Join(home, ".ggvalet", "state.db")
 }
 
 // stripScheme removes "https://" or "http://" prefix.

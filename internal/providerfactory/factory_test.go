@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ckodex/gitlabvalet/internal/config"
-	"github.com/ckodex/gitlabvalet/internal/provider"
-	"github.com/ckodex/gitlabvalet/internal/provider/github"
+	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/provider/github"
 )
 
 func TestNewFromConfig_DefaultIsGitLab(t *testing.T) {

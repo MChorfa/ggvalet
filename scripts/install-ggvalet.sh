@@ -37,7 +37,7 @@ case "$arch" in
 esac
 
 tag=${1:-$(get_latest_tag)}
-archive="glv_${tag}_${os}_${arch}.tar.gz"
+archive="ggvalet_${tag}_${os}_${arch}.tar.gz"
 url="https://github.com/${GITHUB_REPO}/releases/download/${tag}/${archive}"
 sha_url="https://github.com/${GITHUB_REPO}/releases/download/${tag}/SHA256SUMS"
 

@@ -12,7 +12,7 @@ Download the archive, `SHA256SUMS`, `SHA256SUMS.sig`, and `SHA256SUMS.pem` for t
 release you want, then extract the binary:
 
 ```bash
-tar -xzf glv_*.tar.gz
+tar -xzf ggvalet_*.tar.gz
 RELEASE_TAG=$(./ggvalet --version | awk '{print $2}')
 ```
 
@@ -37,14 +37,8 @@ RELEASE_ISSUER="https://token.actions.githubusercontent.com"
 cosign verify-blob SHA256SUMS \
   --signature SHA256SUMS.sig \
   --certificate SHA256SUMS.pem \
-  --certificate-identity "${RELEASE_PROJECT_URL}//.github/workflows/release.yml@refs/tags/${RELEASE_TAG}" \
+  --certificate-identity "${RELEASE_PROJECT_URL}/.github/workflows/release.yml@refs/tags/${RELEASE_TAG}" \
   --certificate-oidc-issuer "${RELEASE_ISSUER}"
-```
-
-For GitLab releases, set the issuer to your GitLab instance URL and the identity to:
-
-```bash
-"${CI_PROJECT_URL}//.gitlab-ci.yml@refs/tags/${CI_COMMIT_TAG}"
 ```
 
 ## SBOM

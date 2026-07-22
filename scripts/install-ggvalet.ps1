@@ -18,7 +18,7 @@ if (-not $tag) {
     throw "Could not determine latest release tag."
 }
 
-$archive = "glv_${tag}_windows_${arch}.zip"
+$archive = "ggvalet_${tag}_windows_${arch}.zip"
 $url = "https://github.com/$repo/releases/download/$tag/$archive"
 $shaUrl = "https://github.com/$repo/releases/download/$tag/SHA256SUMS"
 

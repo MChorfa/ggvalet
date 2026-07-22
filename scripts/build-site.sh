@@ -108,7 +108,6 @@ Tagged releases publish cross-platform archives, a signed \`SHA256SUMS\`, a
 cosign keyless certificate/Signature pair, and a CycloneDX SBOM.
 
 - [GitHub Releases](https://github.com/$GITHUB_OWNER/$GITHUB_REPO/releases/latest)
-- [GitLab Releases]($GITLAB_URL/-/releases)
 
 See [Install](install.md) and [Verify](verify.md) for usage details.
 EOF
@@ -118,11 +117,11 @@ generate_from_metadata() {
   [[ -n "$METADATA" ]] && cp "$METADATA" "$OUTDIR/metadata.json"
   [[ -n "$ARTIFACTS" ]] && cp "$ARTIFACTS" "$OUTDIR/artifacts.json"
 
-  python3 - "$METADATA" "$ARTIFACTS" "$VERSION" "$GITHUB_OWNER" "$GITHUB_REPO" "$GITLAB_URL" "$RELEASE_BASE_URL" <<'PY'
+  python3 - "$METADATA" "$ARTIFACTS" "$VERSION" "$GITHUB_OWNER" "$GITHUB_REPO" "$RELEASE_BASE_URL" <<'PY'
 import json
 import sys
 
-meta_path, artifacts_path, version, owner, repo, gl_url, release_base = sys.argv[1:8]
+meta_path, artifacts_path, version, owner, repo, release_base = sys.argv[1:7]
 
 meta = {}
 if meta_path:
@@ -165,7 +164,6 @@ for a in artifacts:
 
 out.append("")
 out.append(f"- [GitHub release](https://github.com/{owner}/{repo}/releases/tag/{version})")
-out.append(f"- [GitLab release]({gl_url}/-/releases/{version})")
 out.append("")
 out.append("### Verification")
 out.append("")
@@ -175,12 +173,10 @@ out.append("```bash")
 out.append("cosign verify-blob SHA256SUMS \\")
 out.append("  --signature SHA256SUMS.sig \\")
 out.append("  --certificate SHA256SUMS.pem \\")
-out.append(f"  --certificate-identity \"{owner}/{repo}//.github/workflows/release.yml@refs/tags/{version}\" \\")
+out.append(f"  --certificate-identity \"https://github.com/{owner}/{repo}/.github/workflows/release.yml@refs/tags/{version}\" \\")
 out.append("  --certificate-oidc-issuer https://token.actions.githubusercontent.com")
 out.append("```")
 out.append("")
-out.append("For GitLab releases, use your GitLab instance URL as the issuer and the CI identity.")
-
 print("\n".join(out))
 PY
 }

@@ -3,10 +3,11 @@ name: ggvalet-provider
 description: >
   Guide for adding, modifying, or debugging ggvalet provider adapters.
   Use when touching internal/provider, providerfactory, internal/config,
-  internal/client, cmd/hostguard, or provider-related tests and docs.
+  internal/client, cmd/hostguard, cmd/root, cmd/doctor, or provider-related
+  tests and docs.
 namespace: default
 metadata:
-  version: 1.0.1
+  version: 1.0.2
   status: active
 license: MIT
 ---
@@ -24,6 +25,9 @@ license: MIT
 - `internal/client/client.go` — builds `Provider` and raw GitLab `go-gitlab` client (`GL` only for gitlab).
 - `internal/config/config.go` — loads glab and tea config, resolves active host, URL, token, `Provider`.
 - `cmd/hostguard.go` — blocks non-host-neutral commands under non-GitLab providers.
+- `cmd/root.go` — `hosts` command and provider-aware headers/hints.
+- `cmd/doctor.go` — provider-aware configuration diagnostics.
+- `README.md` and `pages/docs/providers.md` — provider matrix and setup docs.
 
 ## Adding a new provider
 
@@ -39,8 +43,10 @@ license: MIT
    - Add a config-loading path for the new provider if it has its own CLI config file.
    - Set `HostConfig.Provider` on loaded hosts and make `ForHost` return the correct `Config.URL` field.
 6. Update `cmd/hostguard.go` allowlists if the new provider supports host-neutral commands.
-7. Update `cmd/hosts.go` / `cmd/doctor.go` hints and `cmd/root.go` display logic.
+7. Update `cmd/root.go` (`hosts` output) and `cmd/doctor.go` (hints) for the new provider.
 8. Add tests in `internal/provider/<name>/` and `internal/config/config_test.go`.
+   - Use `httptest` to exercise the SDK-backed surface.
+   - Cover `ErrUnsupported` stubs and helper functions.
 9. Update `README.md` and `pages/docs/providers.md` with the provider matrix.
 
 ## Conventions
@@ -50,6 +56,7 @@ license: MIT
 - `ErrUnsupported` must be returned as the wrapped cause so `errors.Is(err, provider.ErrUnsupported)` works.
 - `provider.Kind` string values are load-bearing (tests check literal values).
 - The `Hosts` map in `Config` carries the active provider's hosts; `ForHost` must preserve `HostConfig.Provider`.
+- Provider docs must use the same capability matrix rows as `pages/docs/providers.md`.
 
 ## Testing
 

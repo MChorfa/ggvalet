@@ -183,22 +183,29 @@ querying GitLab (`cmd/hostguard.go`).
 ### Host-capability matrix
 
 | Command surface | GitLab | GitHub | Gitea |
-|---|---|---|---|---|
-| `issue` (list/mine/get/create/update/close/comment) | GA | `list --milestone` unsupported | GA |
+|---|---|---|---|
+| `issue` (list/mine/get/create/update/close/comment) | GA | `list --milestone` unsupported | `list --milestone` unsupported |
 | `mr` (list/mine/create/approve/merge/diff/close) | GA | `mine`, `approve` unsupported | `mine`, `diff` unsupported |
 | `label` (list/create/sync) | GA | GA | GA |
 | `epic`, group `milestone` | GA | no equivalent | no equivalent |
-| `sync`, `search`, `standup`, `timeline`, `renovate`, `shields`, `tui`, `report` | GA | GitLab-only | `issue`, `mr`, `label`, `report` work; `sync`, `search`, `standup`, `timeline`, `renovate`, `shields`, `tui` are GitLab-only |
+| `report`, `journal`, `hosts`, `doctor`, `cache`, `receipt` | GA | GA | GA |
+| `plan` (validate/diff/apply/status/resume) | GA | issues work; group milestones/epics unsupported | issues work; group milestones/epics unsupported |
+| `sync`, `search`, `standup`, `timeline`, `renovate`, `shields`, `tui` | GA | GitLab-only | GitLab-only |
 
-"unsupported" returns `provider.ErrUnsupported` (a clear error), never a silent
-fallback. GitHub and Gitea stay `[S]` experimental until live-instance
-integration jobs run in CI.
+Notes:
+
+- "unsupported" returns `provider.ErrUnsupported` (a clear error), never a silent
+  fallback.
+- GitHub and Gitea stay `[S]` experimental until live-instance integration jobs
+  run in CI.
+- `plan` is provider-driven, but GitHub and Gitea cannot create group-level
+  milestones or epics, so plans containing those operations will fail.
 
 ---
 
 ## Configuration
 
-Zero-config when glab is set up. Optional overrides:
+Zero-config when glab (or tea, for Gitea) is set up. Optional overrides:
 
 ```bash
 export GLVALET_DEFAULT_PROJECT="group/project"
@@ -226,15 +233,21 @@ matrix above for what each surface supports.
 ### Gitea provider (opt-in, `[S]` experimental)
 
 ```bash
-export GLVALET_PROVIDER=gitea                       # select the adapter
-export GLVALET_GITEA_URL="https://gitea.example.com" # optional: override tea URL
-export GLVALET_TOKEN="gitea_xxx"                    # PAT or token from tea
+export GLVALET_PROVIDER=gitea                           # select the adapter
+export GLVALET_GITEA_URL="https://gitea.example.com"    # optional: override tea URL
+export GLVALET_TOKEN="gitea_xxx"                        # PAT or token from tea
+export GLVALET_DEFAULT_PROJECT="owner/repo"             # optional: default project
 ```
 
 `ggvalet` reads `tea login` credentials from `~/.config/tea/config.yml` or
-`~/.tea/tea.yml` automatically. The `issue`, `mr`, `label`, `report`, `plan`,
-`journal`, and `hosts` commands are supported; group milestones, epics, and
-`mr mine` / `mr diff` return `provider.ErrUnsupported`.
+`~/.tea/tea.yml` automatically. If `tea` has a single login, that instance is
+used as the default; with multiple logins, `GLVALET_HOST` can select one by its
+host.
+
+Supported surfaces: `issue`, `mr`, `label`, `report`, `journal`, `hosts`,
+`doctor`, `cache`, `receipt`, and issue-only `plan` operations. Group
+milestones, group epics, `mr mine`, `mr diff`, `sync`, `search`, `standup`,
+`timeline`, `renovate`, `shields`, and `tui` return `provider.ErrUnsupported`.
 
 ---
 

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/MChorfa/ggvalet/internal/journal"
 	"github.com/MChorfa/ggvalet/internal/provider"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )

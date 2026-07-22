@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/MChorfa/ggvalet/internal/parallel"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 	gl "github.com/xanzy/go-gitlab"
 )

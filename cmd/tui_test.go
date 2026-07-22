@@ -3,9 +3,9 @@ package cmd
 import (
 	"testing"
 
+	"github.com/MChorfa/ggvalet/internal/journal"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/MChorfa/ggvalet/internal/journal"
 )
 
 func updateTUI(t *testing.T, m tuiModel, msg tea.Msg) tuiModel {

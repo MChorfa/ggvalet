@@ -26,11 +26,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MChorfa/ggvalet/internal/journal"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/MChorfa/ggvalet/internal/journal"
 	"github.com/spf13/cobra"
 	gl "github.com/xanzy/go-gitlab"
 )

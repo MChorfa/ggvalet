@@ -6,9 +6,11 @@ DIST := dist
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.0.0-dev")
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
 
-.PHONY: all build install test cover cover-p19 vwp fmt vet clean tidy cross checksums sbom release release-dry goreleaser-check site attest-sign
+.PHONY: all build install test cover cover-p19 vwp govulncheck regression fmt vet clean tidy cross checksums sbom release release-dry goreleaser-check site attest-sign
 
 all: tidy fmt vet build
+
+regression: test cover cover-p19 vwp govulncheck cross
 
 build:
 	go build $(LDFLAGS) -o $(BINARY) .
@@ -42,6 +44,15 @@ cover-p19:
 # CKODEX VWP §26 governance gate (mirrors the CI `vwp` job).
 vwp:
 	bash scripts/vwp-lint.sh
+
+# Govulncheck security scan. Fails if any called vulnerability is found.
+govulncheck:
+	@if command -v govulncheck >/dev/null 2>&1; then \
+		govulncheck ./...; \
+	else \
+		echo "govulncheck not installed; install with: go install golang.org/x/vuln/cmd/govulncheck@latest"; \
+		exit 1; \
+	fi
 
 fmt:
 	gofmt -w .

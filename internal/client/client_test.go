@@ -108,6 +108,47 @@ func TestClient_New_GitHubOnly_NoGitLabClient(t *testing.T) {
 	}
 }
 
+// ─── TestClient_New_GiteaOnly_NoGitLabClient ──────────────────────────────────
+
+// TestClient_New_GiteaOnly_NoGitLabClient verifies that when the Gitea
+// provider is selected, client.New skips the go-gitlab client construction
+// entirely and returns a nil GL field, while still producing a working
+// provider and journal/state stores. Mirrors the GitHub-only test.
+func TestClient_New_GiteaOnly_NoGitLabClient(t *testing.T) {
+	t.Setenv("GLVALET_PROVIDER", "gitea")
+
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Host:        "gitea.example.com",
+		GiteaURL:    "https://gitea.example.com",
+		Token:       "gitea-test-token",
+		Provider:    "gitea",
+		JournalPath: filepath.Join(dir, "journal.jsonl"),
+		CachePath:   filepath.Join(dir, "cache"),
+		StatePath:   filepath.Join(dir, "state.db"),
+		// Intentionally no GitLabURL — this is the Gitea-only startup case.
+	}
+
+	c, err := client.New(cfg)
+	if err != nil {
+		t.Fatalf("client.New: %v", err)
+	}
+	defer c.Close()
+
+	if c.GL != nil {
+		t.Errorf("GL = %v, expected nil for Gitea-only client", c.GL)
+	}
+	if c.Provider == nil {
+		t.Fatal("Provider is nil; expected a live provider")
+	}
+	if got := c.Provider.Kind(); got != provider.KindGitea {
+		t.Errorf("Provider.Kind() = %q, expected %q", got, provider.KindGitea)
+	}
+	if c.State == nil {
+		t.Error("State is nil; expected a live state store")
+	}
+}
+
 // ─── TestClient_ListIssues_RecordsJournalEntry ────────────────────────────────
 
 // TestClient_ListIssues_RecordsJournalEntry verifies that:

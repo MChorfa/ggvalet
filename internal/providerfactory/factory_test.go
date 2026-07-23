@@ -68,6 +68,26 @@ func TestNewFromConfig_GitHubEnabled(t *testing.T) {
 	}
 }
 
+func TestNewFromConfig_Gitea(t *testing.T) {
+	t.Setenv("GLVALET_PROVIDER", "gitea")
+
+	cfg := &config.Config{
+		Host:     "gitea.example.com",
+		GiteaURL: "https://gitea.example.com",
+		Token:    "gitea-token",
+		Provider: "gitea",
+	}
+
+	p, err := NewFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("NewFromConfig: %v", err)
+	}
+
+	if got := p.Kind(); got != provider.KindGitea {
+		t.Errorf("Kind() = %q, want %q", got, provider.KindGitea)
+	}
+}
+
 func TestNewFromConfig_GitHubDisabled(t *testing.T) {
 	t.Setenv("GLVALET_PROVIDER", "github")
 	t.Setenv("GLVALET_GITHUB_ENABLED", "")

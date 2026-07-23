@@ -59,17 +59,19 @@ func TestEnsureHostNeutral_GitLab_AllowsEverything(t *testing.T) {
 }
 
 func TestEnsureHostNeutral_NonGitLab_BlocksRawSDKCommands(t *testing.T) {
-	// The reason this matters: under GLVALET_PROVIDER=github a raw-GL command
-	// would otherwise silently hit GitLab. It MUST fail loud instead.
+	// The reason this matters: under GLVALET_PROVIDER=github|gitea a raw-GL
+	// command would otherwise silently hit GitLab. It MUST fail loud instead.
 	root := buildTree()
-	for _, path := range []string{"ggvalet sync", "ggvalet epic list", "ggvalet wi list"} {
-		err := ensureHostNeutral(find(t, root, path), provider.KindGitHub)
-		if err == nil {
-			t.Errorf("KindGitHub silently allowed not-yet-migrated %q", path)
-			continue
-		}
-		if !strings.Contains(err.Error(), "experimental") {
-			t.Errorf("error for %q lacks [S] explanation: %v", path, err)
+	for _, kind := range []provider.Kind{provider.KindGitHub, provider.KindGitea} {
+		for _, path := range []string{"ggvalet sync", "ggvalet epic list", "ggvalet wi list"} {
+			err := ensureHostNeutral(find(t, root, path), kind)
+			if err == nil {
+				t.Errorf("%s silently allowed not-yet-migrated %q", kind, path)
+				continue
+			}
+			if !strings.Contains(err.Error(), "experimental") {
+				t.Errorf("error for %q (%s) lacks [S] explanation: %v", path, kind, err)
+			}
 		}
 	}
 }
@@ -78,9 +80,11 @@ func TestEnsureHostNeutral_NonGitLab_AllowsMigratedAndNeutral(t *testing.T) {
 	// Migrated leaves (issue create, mr close), fully-neutral subtrees
 	// (journal), and host-neutral report/report push work on any host.
 	root := buildTree()
-	for _, path := range []string{"ggvalet issue list", "ggvalet issue create", "ggvalet mr merge", "ggvalet mr close", "ggvalet journal show", "ggvalet report", "ggvalet report push"} {
-		if err := ensureHostNeutral(find(t, root, path), provider.KindGitHub); err != nil {
-			t.Errorf("KindGitHub blocked host-neutral %q: %v", path, err)
+	for _, kind := range []provider.Kind{provider.KindGitHub, provider.KindGitea} {
+		for _, path := range []string{"ggvalet issue list", "ggvalet issue create", "ggvalet mr merge", "ggvalet mr close", "ggvalet journal show", "ggvalet report", "ggvalet report push"} {
+			if err := ensureHostNeutral(find(t, root, path), kind); err != nil {
+				t.Errorf("%s blocked host-neutral %q: %v", kind, path, err)
+			}
 		}
 	}
 }

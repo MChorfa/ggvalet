@@ -124,3 +124,74 @@ func TestDoctor_GitHubProbeFails(t *testing.T) {
 		t.Errorf("error = %q, expected diagnostics failed", err.Error())
 	}
 }
+
+// writeTeaConfig writes a minimal tea config file for doctor tests and returns
+// its path.
+func writeTeaConfig(t *testing.T, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	return p
+}
+
+func TestDoctor_GiteaHappyPath(t *testing.T) {
+	silenceOutput(t)
+	// httptest Gitea server that replies to the version check and the
+	// ListMyIssues probe (/api/v1/repos/issues/search).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/version":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"version": "1.22.0"}`))
+		case "/api/v1/repos/issues/search":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("[]"))
+		default:
+			t.Errorf("unexpected Gitea probe path %s", r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GLVALET_PROVIDER", "gitea")
+	t.Setenv("GLVALET_TEA_CONFIG", writeTeaConfig(t, fmt.Sprintf(`
+logins:
+  - name: test-gitea
+    url: %s
+    token: gitea-test-token
+    default: true
+    user: alice
+    insecure: false
+`, srv.URL)))
+	t.Setenv("GLVALET_TOKEN", "")
+	t.Setenv("GLVALET_GITLAB_URL", "")
+	hostFlag = ""
+
+	if err := runDoctor(); err != nil {
+		t.Fatalf("runDoctor: %v", err)
+	}
+}
+
+func TestDoctor_GiteaNoLoginsError(t *testing.T) {
+	silenceOutput(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GLVALET_PROVIDER", "gitea")
+	t.Setenv("GLVALET_TEA_CONFIG", writeTeaConfig(t, "logins: []\n"))
+	t.Setenv("GLVALET_TOKEN", "")
+	t.Setenv("GLVALET_GITEA_URL", "")
+	t.Setenv("GLVALET_GITLAB_URL", "")
+	hostFlag = ""
+
+	err := runDoctor()
+	if err == nil {
+		t.Fatal("runDoctor: expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "config load failed") {
+		t.Errorf("error = %q, expected config load failed", err.Error())
+	}
+}

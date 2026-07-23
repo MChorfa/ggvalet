@@ -15,6 +15,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 	gl "github.com/xanzy/go-gitlab"
@@ -195,7 +196,7 @@ func shieldsChipsCmd() *cobra.Command {
 
 			if issueIID > 0 {
 				// Labels on a specific issue
-				iss, _, err := glClient.GL.Issues.GetIssue(project, issueIID, nil)
+				iss, err := glClient.Provider.GetIssue(cmd.Context(), project, issueIID)
 				if err != nil {
 					return fmt.Errorf("get issue: %w", err)
 				}
@@ -207,8 +208,10 @@ func shieldsChipsCmd() *cobra.Command {
 				}
 
 				// Fetch project labels to get colors
-				allLabels, _, _ := glClient.GL.Labels.ListLabels(project,
-					&gl.ListLabelsOptions{ListOptions: gl.ListOptions{PerPage: 100}})
+				allLabels, err := glClient.Provider.ListLabels(cmd.Context(), project)
+				if err != nil {
+					return fmt.Errorf("list labels: %w", err)
+				}
 				colorMap := buildLabelColorMap(allLabels)
 
 				chips := renderLabelChips(iss.Labels, colorMap)
@@ -218,8 +221,7 @@ func shieldsChipsCmd() *cobra.Command {
 			}
 
 			// All project labels as chips
-			labels, _, err := glClient.GL.Labels.ListLabels(project,
-				&gl.ListLabelsOptions{ListOptions: gl.ListOptions{PerPage: 100}})
+			labels, err := glClient.Provider.ListLabels(cmd.Context(), project)
 			if err != nil {
 				return fmt.Errorf("list labels: %w", err)
 			}
@@ -227,8 +229,7 @@ func shieldsChipsCmd() *cobra.Command {
 			fmt.Printf("Labels for %s:\n\n", project)
 			for _, lbl := range labels {
 				chip := renderChip(lbl.Name, lbl.Color)
-				fmt.Printf("  %s  open:%d  all:%d\n",
-					chip, lbl.OpenIssuesCount, lbl.OpenIssuesCount+lbl.ClosedIssuesCount)
+				fmt.Printf("  %s  open:%d\n", chip, lbl.OpenIssuesCount)
 			}
 			fmt.Println()
 			return nil
@@ -275,7 +276,7 @@ func renderChip(name, hexColor string) string {
 	return style.Render(name)
 }
 
-func buildLabelColorMap(labels []*gl.Label) map[string]string {
+func buildLabelColorMap(labels []provider.Label) map[string]string {
 	m := make(map[string]string, len(labels))
 	for _, l := range labels {
 		m[l.Name] = l.Color

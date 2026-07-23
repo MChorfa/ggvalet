@@ -190,8 +190,9 @@ querying GitLab (`cmd/hostguard.go`).
 | `epic`, group `milestone` | GA | no equivalent | no equivalent |
 | `report`, `journal`, `hosts`, `doctor`, `cache`, `receipt` | GA | GA | GA |
 | `plan` (validate/diff/apply/status/resume) | GA | issues work; group milestones/epics unsupported | issues work; group milestones/epics unsupported |
-| `sync`, `search`, `timeline`, `renovate`, `shields`, `tui` | GA | GitLab-only | GitLab-only |
+| `sync`, `search`, `timeline`, `renovate`, `shields badge`, `tui` | GA | GitLab-only | GitLab-only |
 | `standup` | GA | GA | GA |
+| `shields chips` | GA | GA | GA |
 
 Notes:
 
@@ -245,10 +246,10 @@ export GLVALET_DEFAULT_PROJECT="owner/repo"             # optional: default proj
 used as the default; with multiple logins, `GLVALET_HOST` can select one by its
 host.
 
-Supported surfaces: `issue`, `mr` (including `mr diff`), `label`, `standup`, `report`, `journal`, `hosts`,
+Supported surfaces: `issue`, `mr` (including `mr diff`), `label`, `standup`, `shields chips`, `report`, `journal`, `hosts`,
 `doctor`, `cache`, `receipt`, and issue-only `plan` operations. Group
 milestones, group epics, `mr mine`, `sync`, `search`,
-`timeline`, `renovate`, `shields`, and `tui` return `provider.ErrUnsupported`.
+`timeline`, `renovate`, `shields badge`, and `tui` return `provider.ErrUnsupported`.
 
 ---
 

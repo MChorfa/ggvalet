@@ -30,7 +30,8 @@ var hostNeutralPrefixes = []string{
 // per-leaf entries go here when a partially-migrated parent appears; see
 // docs/VWP-ATTESTATION.md RES-01.
 var hostNeutralLeaves = map[string]bool{
-	"ggvalet": true, // root help / usage
+	"ggvalet":              true, // root help / usage
+	"ggvalet shields chips": true, // migrated to client.Provider; badge stays GitLab-only
 }
 
 // hostBlockedLeaves are leaves under a host-neutral prefix that still issue raw

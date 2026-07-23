@@ -30,7 +30,12 @@ func buildTree() *cobra.Command {
 	report := &cobra.Command{Use: "report"}
 	report.AddCommand(&cobra.Command{Use: "push"})
 	standup := &cobra.Command{Use: "standup"} // migrated → host-neutral
-	root.AddCommand(issue, mr, journal, epic, sync, wi, report, standup)
+	shields := &cobra.Command{Use: "shields"} // partially migrated
+	shields.AddCommand(
+		&cobra.Command{Use: "badge"}, // GitLab-only → blocked off GitLab
+		&cobra.Command{Use: "chips"}, // migrated → host-neutral leaf
+	)
+	root.AddCommand(issue, mr, journal, epic, sync, wi, report, standup, shields)
 	return root
 }
 
@@ -64,7 +69,7 @@ func TestEnsureHostNeutral_NonGitLab_BlocksRawSDKCommands(t *testing.T) {
 	// command would otherwise silently hit GitLab. It MUST fail loud instead.
 	root := buildTree()
 	for _, kind := range []provider.Kind{provider.KindGitHub, provider.KindGitea} {
-		for _, path := range []string{"ggvalet sync", "ggvalet epic list", "ggvalet wi list"} {
+		for _, path := range []string{"ggvalet sync", "ggvalet epic list", "ggvalet wi list", "ggvalet shields badge"} {
 			err := ensureHostNeutral(find(t, root, path), kind)
 			if err == nil {
 				t.Errorf("%s silently allowed not-yet-migrated %q", kind, path)
@@ -82,7 +87,7 @@ func TestEnsureHostNeutral_NonGitLab_AllowsMigratedAndNeutral(t *testing.T) {
 	// (journal), and host-neutral report/report push work on any host.
 	root := buildTree()
 	for _, kind := range []provider.Kind{provider.KindGitHub, provider.KindGitea} {
-		for _, path := range []string{"ggvalet issue list", "ggvalet issue create", "ggvalet mr merge", "ggvalet mr close", "ggvalet journal show", "ggvalet report", "ggvalet report push", "ggvalet standup"} {
+		for _, path := range []string{"ggvalet issue list", "ggvalet issue create", "ggvalet mr merge", "ggvalet mr close", "ggvalet journal show", "ggvalet report", "ggvalet report push", "ggvalet standup", "ggvalet shields chips"} {
 			if err := ensureHostNeutral(find(t, root, path), kind); err != nil {
 				t.Errorf("%s blocked host-neutral %q: %v", kind, path, err)
 			}

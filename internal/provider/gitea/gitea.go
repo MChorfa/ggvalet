@@ -469,10 +469,50 @@ func (g *Gitea) MergeMergeRequest(ctx context.Context, project string, iid int, 
 	return toPR(project, pr), nil
 }
 
-// GetMergeRequestDiff is unsupported in the MVP; Gitea returns a raw unified
-// diff or a changed-file list, neither of which maps directly to provider.FileDiff.
-func (g *Gitea) GetMergeRequestDiff(_ context.Context, _ string, _ int) ([]provider.FileDiff, error) {
-	return nil, provider.ErrUnsupported
+// GetMergeRequestDiff returns the per-file changes of a pull request. Gitea's
+// changed-file endpoint exposes paths and status but not the patch text, so
+// the raw unified diff is fetched separately and split into per-file sections
+// that are attributed to each ChangedFile by path.
+func (g *Gitea) GetMergeRequestDiff(ctx context.Context, project string, iid int) ([]provider.FileDiff, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return nil, err
+	}
+
+	files, _, err := g.client.PullRequests.ListPullRequestFiles(ctx, owner, repo, int64(iid),
+		giteasdk.ListPullRequestFilesOptions{ListOptions: giteasdk.ListOptions{Page: 1, PageSize: 100}})
+	if err != nil {
+		return nil, fmt.Errorf("gitea list pull request files: %w", err)
+	}
+
+	raw, _, err := g.client.PullRequests.GetPullRequestDiff(ctx, owner, repo, int64(iid),
+		giteasdk.PullRequestDiffOptions{Binary: false})
+	if err != nil {
+		return nil, fmt.Errorf("gitea get pull request diff: %w", err)
+	}
+	patches := parseUnifiedDiff(string(raw))
+
+	out := make([]provider.FileDiff, 0, len(files))
+	for _, f := range files {
+		if f == nil {
+			continue
+		}
+		oldPath := f.PreviousFilename
+		newPath := f.Filename
+		if oldPath == "" {
+			oldPath = newPath
+		}
+		fd := provider.FileDiff{
+			OldPath:     oldPath,
+			NewPath:     newPath,
+			Diff:        patches[newPath],
+			NewFile:     f.Status == "added",
+			DeletedFile: f.Status == "removed",
+			RenamedFile: f.Status == "renamed",
+		}
+		out = append(out, fd)
+	}
+	return out, nil
 }
 
 // ─── Label surface ────────────────────────────────────────────────────────────
@@ -808,6 +848,74 @@ func hasAllLabelNames(labels []*giteasdk.Label, want []string) bool {
 		}
 	}
 	return true
+}
+
+// parseUnifiedDiff splits a raw unified diff into per-file patch sections,
+// keyed by the new file path. Each section starts at a "diff --git " header
+// and runs until the next one (or EOF). The key is extracted from the
+// "+++ b/<path>" line; when the path is "/dev/null" (deletions) the
+// "--- a/<path>" line is used instead. Returns an empty map for empty input.
+func parseUnifiedDiff(raw string) map[string]string {
+	patches := make(map[string]string)
+	if raw == "" {
+		return patches
+	}
+
+	const marker = "diff --git "
+	lines := strings.Split(raw, "\n")
+	var (
+		current []string
+		key     string
+	)
+	flush := func() {
+		if key == "" || len(current) == 0 {
+			return
+		}
+		patches[key] = strings.Join(current, "\n")
+	}
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, marker) {
+			flush()
+			current = []string{line}
+			key = ""
+			continue
+		}
+		if len(current) == 0 {
+			continue
+		}
+		current = append(current, line)
+		switch {
+		case strings.HasPrefix(line, "+++ "):
+			// +++ comes after ---, so prefer it unless the file was
+			// deleted (+++ /dev/null), in which case keep the --- key.
+			if p := pathFromDiffHeader(line); p != "/dev/null" {
+				key = p
+			}
+		case key == "" && strings.HasPrefix(line, "--- "):
+			key = pathFromDiffHeader(line)
+		}
+	}
+	flush()
+	return patches
+}
+
+// pathFromDiffHeader extracts the path from a "--- a/path" or "+++ b/path"
+// line, stripping the leading prefix and any surrounding quotes. Returns
+// "/dev/null" unchanged so callers can distinguish deletions.
+func pathFromDiffHeader(line string) string {
+	rest := line
+	if i := strings.IndexByte(rest, ' '); i >= 0 {
+		rest = rest[i+1:]
+	}
+	rest = strings.Trim(rest, `"`)
+	for _, prefix := range []string{"a/", "b/"} {
+		if strings.HasPrefix(rest, prefix) {
+			rest = strings.TrimPrefix(rest, prefix)
+			break
+		}
+	}
+	return rest
 }
 
 // compile-time interface check.

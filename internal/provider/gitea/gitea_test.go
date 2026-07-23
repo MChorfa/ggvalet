@@ -16,6 +16,26 @@ import (
 	"github.com/MChorfa/ggvalet/internal/provider"
 )
 
+// diffRaw is a two-file unified diff used by GetMergeRequestDiff tests.
+// File 1 is an addition (main.go); file 2 is a rename (renamed.go → old.go).
+const diffRaw = `diff --git a/main.go b/main.go
+index 0000000..1111111 100644
+--- /dev/null
++++ b/main.go
+@@ -0,0 +1,2 @@
++package main
++
+func main() {}
+diff --git a/renamed.go b/old.go
+index 2222222..3333333 100644
+--- a/renamed.go
++++ b/old.go
+@@ -1,3 +1,3 @@
+ package old
+-func old() {}
++func new() {}
+`
+
 func TestSplitProject(t *testing.T) {
 	tests := []struct {
 		input      string
@@ -332,6 +352,10 @@ func testGiteaHandler(t *testing.T, w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "[%s]", prJSON(3))
 	case path == "/repos/owner/repo/pulls" && r.Method == "POST":
 		fmt.Fprint(w, prJSON(4))
+	case strings.HasSuffix(path, "/pulls/3/files") && r.Method == "GET":
+		fmt.Fprint(w, `[{"filename":"main.go","previous_filename":"","status":"added","additions":2,"deletions":0,"changes":2},{"filename":"old.go","previous_filename":"renamed.go","status":"renamed","additions":1,"deletions":1,"changes":2}]`)
+	case strings.HasSuffix(path, "/pulls/3.diff") && r.Method == "GET":
+		fmt.Fprint(w, diffRaw)
 	case strings.HasPrefix(path, "/repos/owner/repo/pulls/") && r.Method == "GET":
 		fmt.Fprint(w, prJSON(3))
 	case strings.HasPrefix(path, "/repos/owner/repo/pulls/") && r.Method == "PATCH":
@@ -603,9 +627,6 @@ func TestGitea_Unsupported(t *testing.T) {
 	if _, err := g.ListMyMergeRequests(context.Background(), provider.ListMyMergeRequestsOptions{}); !errors.Is(err, provider.ErrUnsupported) {
 		t.Errorf("ListMyMergeRequests error = %v, want ErrUnsupported", err)
 	}
-	if _, err := g.GetMergeRequestDiff(context.Background(), "owner/repo", 3); !errors.Is(err, provider.ErrUnsupported) {
-		t.Errorf("GetMergeRequestDiff error = %v, want ErrUnsupported", err)
-	}
 	if _, err := g.CreateGroupMilestone(context.Background(), 1, provider.CreateMilestoneOptions{}); !errors.Is(err, provider.ErrUnsupported) {
 		t.Errorf("CreateGroupMilestone error = %v, want ErrUnsupported", err)
 	}
@@ -621,6 +642,110 @@ func TestGitea_Unsupported(t *testing.T) {
 	if err := g.LinkIssueToEpic(context.Background(), 1, 1, 1); !errors.Is(err, provider.ErrUnsupported) {
 		t.Errorf("LinkIssueToEpic error = %v, want ErrUnsupported", err)
 	}
+}
+
+func TestGitea_GetMergeRequestDiff(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	diffs, err := g.GetMergeRequestDiff(context.Background(), "owner/repo", 3)
+	if err != nil {
+		t.Fatalf("GetMergeRequestDiff: %v", err)
+	}
+	if len(diffs) != 2 {
+		t.Fatalf("got %d file diffs, want 2", len(diffs))
+	}
+
+	// File 1: addition.
+	if diffs[0].NewPath != "main.go" {
+		t.Errorf("diffs[0].NewPath = %q, want main.go", diffs[0].NewPath)
+	}
+	if diffs[0].OldPath != "main.go" {
+		t.Errorf("diffs[0].OldPath = %q, want main.go", diffs[0].OldPath)
+	}
+	if !diffs[0].NewFile {
+		t.Errorf("diffs[0].NewFile = false, want true")
+	}
+	if !strings.Contains(diffs[0].Diff, "+package main") {
+		t.Errorf("diffs[0].Diff missing patch text; got %q", diffs[0].Diff)
+	}
+
+	// File 2: rename (renamed.go → old.go).
+	if diffs[1].NewPath != "old.go" {
+		t.Errorf("diffs[1].NewPath = %q, want old.go", diffs[1].NewPath)
+	}
+	if diffs[1].OldPath != "renamed.go" {
+		t.Errorf("diffs[1].OldPath = %q, want renamed.go", diffs[1].OldPath)
+	}
+	if !diffs[1].RenamedFile {
+		t.Errorf("diffs[1].RenamedFile = false, want true")
+	}
+	if !strings.Contains(diffs[1].Diff, "+func new() {}") {
+		t.Errorf("diffs[1].Diff missing patch text; got %q", diffs[1].Diff)
+	}
+}
+
+func TestGitea_GetMergeRequestDiff_BadProject(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	if _, err := g.GetMergeRequestDiff(context.Background(), "bad", 3); err == nil {
+		t.Error("expected error for malformed project, got nil")
+	}
+}
+
+func TestParseUnifiedDiff(t *testing.T) {
+	patches := parseUnifiedDiff(diffRaw)
+	if len(patches) != 2 {
+		t.Fatalf("got %d patches, want 2", len(patches))
+	}
+	if _, ok := patches["main.go"]; !ok {
+		t.Errorf("missing patch for main.go; keys: %v", mapKeys(patches))
+	}
+	if _, ok := patches["old.go"]; !ok {
+		t.Errorf("missing patch for old.go; keys: %v", mapKeys(patches))
+	}
+	if !strings.Contains(patches["main.go"], "diff --git a/main.go b/main.go") {
+		t.Errorf("main.go patch missing diff header: %q", patches["main.go"])
+	}
+}
+
+func TestParseUnifiedDiff_Deletion(t *testing.T) {
+	raw := "diff --git a/gone.go b/gone.go\nindex 111..000 100644\n--- a/gone.go\n+++ /dev/null\n@@ -1 +0,0 @@\n-func gone() {}\n"
+	patches := parseUnifiedDiff(raw)
+	if _, ok := patches["gone.go"]; !ok {
+		t.Fatalf("deletion keyed by /dev/null instead of gone.go; keys: %v", mapKeys(patches))
+	}
+}
+
+func TestParseUnifiedDiff_Empty(t *testing.T) {
+	if got := parseUnifiedDiff(""); len(got) != 0 {
+		t.Errorf("empty input produced %d patches, want 0", len(got))
+	}
+}
+
+func TestPathFromDiffHeader(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"+++ b/main.go", "main.go"},
+		{"--- a/old.go", "old.go"},
+		{"+++ /dev/null", "/dev/null"},
+		{`+++ "b/sp ace.go"`, "sp ace.go"},
+	}
+	for _, tt := range tests {
+		if got := pathFromDiffHeader(tt.in); got != tt.want {
+			t.Errorf("pathFromDiffHeader(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func mapKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func TestGitea_CreateIssue_LabelNotFound(t *testing.T) {

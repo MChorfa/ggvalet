@@ -185,7 +185,7 @@ querying GitLab (`cmd/hostguard.go`).
 | Command surface | GitLab | GitHub | Gitea |
 |---|---|---|---|
 | `issue` (list/mine/get/create/update/close/comment) | GA | `list --milestone` unsupported | `list --milestone` unsupported |
-| `mr` (list/mine/create/approve/merge/diff/close) | GA | `mine`, `approve` unsupported | `mine`, `diff` unsupported |
+| `mr` (list/mine/create/approve/merge/diff/close) | GA | `mine`, `approve` unsupported | `mine` unsupported |
 | `label` (list/create/sync) | GA | GA | GA |
 | `epic`, group `milestone` | GA | no equivalent | no equivalent |
 | `report`, `journal`, `hosts`, `doctor`, `cache`, `receipt` | GA | GA | GA |
@@ -244,9 +244,9 @@ export GLVALET_DEFAULT_PROJECT="owner/repo"             # optional: default proj
 used as the default; with multiple logins, `GLVALET_HOST` can select one by its
 host.
 
-Supported surfaces: `issue`, `mr`, `label`, `report`, `journal`, `hosts`,
+Supported surfaces: `issue`, `mr` (including `mr diff`), `label`, `report`, `journal`, `hosts`,
 `doctor`, `cache`, `receipt`, and issue-only `plan` operations. Group
-milestones, group epics, `mr mine`, `mr diff`, `sync`, `search`, `standup`,
+milestones, group epics, `mr mine`, `sync`, `search`, `standup`,
 `timeline`, `renovate`, `shields`, and `tui` return `provider.ErrUnsupported`.
 
 ---

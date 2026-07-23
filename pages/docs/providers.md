@@ -18,7 +18,7 @@ switches adapters at startup based on `GLVALET_PROVIDER`.
 | Command surface | GitLab | GitHub | Gitea |
 |---|---|---|---|
 | `issue` (list/mine/get/create/update/close/comment) | GA | `list --milestone` unsupported | `list --milestone` unsupported |
-| `mr` (list/mine/create/approve/merge/diff/close) | GA | `mine`, `approve` unsupported | `mine`, `diff` unsupported |
+| `mr` (list/mine/create/approve/merge/diff/close) | GA | `mine`, `approve` unsupported | `mine` unsupported |
 | `label` (list/create/sync) | GA | GA | GA |
 | `epic`, group `milestone` | GA | no equivalent | no equivalent |
 | `report`, `journal`, `hosts`, `doctor`, `cache`, `receipt` | GA | GA | GA |

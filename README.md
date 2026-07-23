@@ -170,8 +170,8 @@ adapter is selected at startup.
 - `GLVALET_HOST` scopes commands to a single configured host.
 
 **GitLab adapter** (`internal/provider/gitlab/`) — exercised by every `ggvalet`
-command. The `issue`, `mr`, and `label` surfaces are fully host-neutral; the
-remaining commands (`epic`, `milestone`, `sync`, `search`, `standup`,
+command. The `issue`, `mr`, `label`, and `standup` surfaces are fully host-neutral; the
+remaining commands (`epic`, `milestone`, `sync`, `search`,
 `timeline`, `renovate`, `shields`, `tui`, `report`) are GitLab-specific.
 
 **GitHub adapter** (`internal/provider/github/`) — opt-in **`[S]` experimental**.
@@ -190,7 +190,8 @@ querying GitLab (`cmd/hostguard.go`).
 | `epic`, group `milestone` | GA | no equivalent | no equivalent |
 | `report`, `journal`, `hosts`, `doctor`, `cache`, `receipt` | GA | GA | GA |
 | `plan` (validate/diff/apply/status/resume) | GA | issues work; group milestones/epics unsupported | issues work; group milestones/epics unsupported |
-| `sync`, `search`, `standup`, `timeline`, `renovate`, `shields`, `tui` | GA | GitLab-only | GitLab-only |
+| `sync`, `search`, `timeline`, `renovate`, `shields`, `tui` | GA | GitLab-only | GitLab-only |
+| `standup` | GA | GA | GA |
 
 Notes:
 
@@ -244,9 +245,9 @@ export GLVALET_DEFAULT_PROJECT="owner/repo"             # optional: default proj
 used as the default; with multiple logins, `GLVALET_HOST` can select one by its
 host.
 
-Supported surfaces: `issue`, `mr` (including `mr diff`), `label`, `report`, `journal`, `hosts`,
+Supported surfaces: `issue`, `mr` (including `mr diff`), `label`, `standup`, `report`, `journal`, `hosts`,
 `doctor`, `cache`, `receipt`, and issue-only `plan` operations. Group
-milestones, group epics, `mr mine`, `sync`, `search`, `standup`,
+milestones, group epics, `mr mine`, `sync`, `search`,
 `timeline`, `renovate`, `shields`, and `tui` return `provider.ErrUnsupported`.
 
 ---

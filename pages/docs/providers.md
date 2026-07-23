@@ -23,7 +23,8 @@ switches adapters at startup based on `GLVALET_PROVIDER`.
 | `epic`, group `milestone` | GA | no equivalent | no equivalent |
 | `report`, `journal`, `hosts`, `doctor`, `cache`, `receipt` | GA | GA | GA |
 | `plan` (validate/diff/apply/status/resume) | GA | issues work; group milestones/epics unsupported | issues work; group milestones/epics unsupported |
-| `sync`, `search`, `standup`, `timeline`, `renovate`, `shields`, `tui` | GA | GitLab-only | GitLab-only |
+| `sync`, `search`, `timeline`, `renovate`, `shields`, `tui` | GA | GitLab-only | GitLab-only |
+| `standup` | GA | GA | GA |
 
 Notes:
 

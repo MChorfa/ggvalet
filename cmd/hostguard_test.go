@@ -29,7 +29,8 @@ func buildTree() *cobra.Command {
 	wi.AddCommand(&cobra.Command{Use: "list"})
 	report := &cobra.Command{Use: "report"}
 	report.AddCommand(&cobra.Command{Use: "push"})
-	root.AddCommand(issue, mr, journal, epic, sync, wi, report)
+	standup := &cobra.Command{Use: "standup"} // migrated → host-neutral
+	root.AddCommand(issue, mr, journal, epic, sync, wi, report, standup)
 	return root
 }
 
@@ -81,7 +82,7 @@ func TestEnsureHostNeutral_NonGitLab_AllowsMigratedAndNeutral(t *testing.T) {
 	// (journal), and host-neutral report/report push work on any host.
 	root := buildTree()
 	for _, kind := range []provider.Kind{provider.KindGitHub, provider.KindGitea} {
-		for _, path := range []string{"ggvalet issue list", "ggvalet issue create", "ggvalet mr merge", "ggvalet mr close", "ggvalet journal show", "ggvalet report", "ggvalet report push"} {
+		for _, path := range []string{"ggvalet issue list", "ggvalet issue create", "ggvalet mr merge", "ggvalet mr close", "ggvalet journal show", "ggvalet report", "ggvalet report push", "ggvalet standup"} {
 			if err := ensureHostNeutral(find(t, root, path), kind); err != nil {
 				t.Errorf("%s blocked host-neutral %q: %v", kind, path, err)
 			}

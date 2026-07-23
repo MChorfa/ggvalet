@@ -21,6 +21,7 @@ var hostNeutralPrefixes = []string{
 	"ggvalet issue", // fully migrated to client.Provider (P8/P13/P16)
 	"ggvalet mr",    // fully migrated to client.Provider (P10/P14/P15)
 	"ggvalet label", // fully migrated to client.Provider (P9/P16)
+	"ggvalet standup", // migrated to client.Provider (journal + ListMyIssues + CreateIssue)
 }
 
 // hostNeutralLeaves holds individual leaf commands that are host-neutral while
@@ -68,7 +69,7 @@ func blockedError(path string, kind provider.Kind) error {
 	return fmt.Errorf(
 		"command %q is not yet host-neutral; %s support is [S] experimental.\n"+
 			"  host-neutral commands: issue create|update|close|comment, label list|create, "+
-			"mr create|close, report, and all plan/journal/cache commands.\n"+
+			"mr create|close, standup, report, and all plan/journal/cache commands.\n"+
 			"  set GLVALET_PROVIDER=gitlab (or unset it) to run this command against GitLab",
 		path, kind)
 }

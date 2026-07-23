@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/MChorfa/ggvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/spf13/cobra"
-	gl "github.com/xanzy/go-gitlab"
 )
 
 func standupCmd() *cobra.Command {
@@ -52,20 +52,35 @@ func standupCmd() *cobra.Command {
 			}
 
 			// ── Today: open issues assigned to me ─────────────────────────────
-			myIssues, _, _ := glClient.GL.Issues.ListIssues(&gl.ListIssuesOptions{
-				Scope:       gl.Ptr("assigned_to_me"),
-				State:       gl.Ptr("opened"),
-				ListOptions: gl.ListOptions{PerPage: 20},
+			myIssues, err := glClient.Provider.ListMyIssues(cmd.Context(), provider.ListMyIssuesOptions{
+				State:   "opened",
+				Page:    1,
+				PerPage: 20,
 			})
+			if err != nil {
+				return fmt.Errorf("list my issues: %w", err)
+			}
 
 			// ── Blocked: open issues with "blocked" label ─────────────────────
-			blockedLabel := gl.LabelOptions{"blocked"}
-			blocked, _, _ := glClient.GL.Issues.ListIssues(&gl.ListIssuesOptions{
-				Scope:       gl.Ptr("assigned_to_me"),
-				State:       gl.Ptr("opened"),
-				Labels:      &blockedLabel,
-				ListOptions: gl.ListOptions{PerPage: 10},
+			// ListMyIssues does not support label filtering, so we fetch a
+			// larger window and filter client-side for the "blocked" label.
+			allMine, err := glClient.Provider.ListMyIssues(cmd.Context(), provider.ListMyIssuesOptions{
+				State:   "opened",
+				Page:    1,
+				PerPage: 50,
 			})
+			if err != nil {
+				return fmt.Errorf("list my issues for blockers: %w", err)
+			}
+			var blocked []provider.Issue
+			for _, iss := range allMine {
+				for _, l := range iss.Labels {
+					if l == "blocked" {
+						blocked = append(blocked, iss)
+						break
+					}
+				}
+			}
 
 			// ── Render ────────────────────────────────────────────────────────
 			var buf strings.Builder
@@ -100,10 +115,10 @@ func standupCmd() *cobra.Command {
 					return fmt.Errorf("--dst-project required with --push-issue")
 				}
 				title := fmt.Sprintf("Standup — %s", time.Now().Format("2006-01-02 Mon"))
-				iss, _, err := glClient.GL.Issues.CreateIssue(dstProject, &gl.CreateIssueOptions{
-					Title:       gl.Ptr(title),
-					Description: gl.Ptr(text),
-					Labels:      &gl.LabelOptions{"standup"},
+				iss, err := glClient.Provider.CreateIssue(cmd.Context(), dstProject, provider.CreateIssueOptions{
+					Title:       title,
+					Description: text,
+					Labels:      []string{"standup"},
 				})
 				if err != nil {
 					return fmt.Errorf("create standup issue: %w", err)
@@ -121,7 +136,7 @@ func standupCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&output, "output", "o", "", "Write to file")
 	cmd.Flags().StringVar(&slackURL, "slack", "", "Slack incoming webhook URL")
 	cmd.Flags().StringVar(&teamsURL, "teams", "", "Microsoft Teams webhook URL")
-	cmd.Flags().BoolVar(&pushIssue, "push-issue", false, "Create a standup issue on GitLab")
+	cmd.Flags().BoolVar(&pushIssue, "push-issue", false, "Create a standup issue on the active host")
 	cmd.Flags().StringVar(&dstProject, "dst-project", "", "Target project for --push-issue")
 	return cmd
 }
@@ -129,7 +144,7 @@ func standupCmd() *cobra.Command {
 // ─── Renderer ─────────────────────────────────────────────────────────────────
 
 func renderStandup(b *strings.Builder, entries []journal.Entry,
-	today []*gl.Issue, blocked []*gl.Issue, host, user string, since time.Time) {
+	today []provider.Issue, blocked []provider.Issue, host, user string, since time.Time) {
 
 	day := time.Now().Format("Monday, January 02 2006")
 	b.WriteString(fmt.Sprintf("## Standup — %s\n", day))
@@ -176,8 +191,8 @@ func renderStandup(b *strings.Builder, entries []journal.Entry,
 	}
 	for _, iss := range today {
 		ms := ""
-		if iss.Milestone != nil {
-			ms = fmt.Sprintf(" [%s]", iss.Milestone.Title)
+		if iss.Milestone != "" {
+			ms = fmt.Sprintf(" [%s]", iss.Milestone)
 		}
 		b.WriteString(fmt.Sprintf("- #%d %s%s\n", iss.IID, truncate(iss.Title, 70), ms))
 	}

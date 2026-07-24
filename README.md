@@ -184,8 +184,8 @@ querying GitLab (`cmd/hostguard.go`).
 
 | Command surface | GitLab | GitHub | Gitea |
 |---|---|---|---|
-| `issue` (list/mine/get/create/update/close/comment) | GA | `list --milestone` unsupported | `list --milestone` unsupported |
-| `mr` (list/mine/create/approve/merge/diff/close) | GA | `mine`, `approve` unsupported | `mine` unsupported |
+| `issue` (list/mine/get/create/update/close/comment) | GA | GA | GA |
+| `mr` (list/mine/create/approve/merge/diff/close) | GA | GA | GA |
 | `label` (list/create/sync) | GA | GA | GA |
 | `epic`, group `milestone` | GA | no equivalent | no equivalent |
 | `report`, `journal`, `hosts`, `doctor`, `cache`, `receipt` | GA | GA | GA |
@@ -202,6 +202,11 @@ Notes:
   run in CI.
 - `plan` is provider-driven, but GitHub and Gitea cannot create group-level
   milestones or epics, so plans containing those operations will fail.
+- GitHub `mr mine` uses the Search API; branch names are not in search results.
+- GitHub `mr approve` submits an `APPROVE` review (GitHub's approval model).
+- GitHub milestone filtering resolves title→number via `ListMilestones`.
+- Gitea `mr mine` uses the issues search API with `type=pulls` (N+1 fetch).
+- Issue `weight` is GitLab-only; GitHub and Gitea have no weight concept.
 
 ---
 
@@ -246,9 +251,9 @@ export GLVALET_DEFAULT_PROJECT="owner/repo"             # optional: default proj
 used as the default; with multiple logins, `GLVALET_HOST` can select one by its
 host.
 
-Supported surfaces: `issue`, `mr` (including `mr diff`), `label`, `standup`, `shields chips`, `report`, `journal`, `hosts`,
+Supported surfaces: `issue`, `mr` (including `mr mine`, `mr approve`, `mr diff`), `label`, `standup`, `shields chips`, `report`, `journal`, `hosts`,
 `doctor`, `cache`, `receipt`, and issue-only `plan` operations. Group
-milestones, group epics, `mr mine`, `sync`, `search`,
+milestones, group epics, issue `weight`, `sync`, `search`,
 `timeline`, `renovate`, `shields badge`, and `tui` return `provider.ErrUnsupported`.
 
 ---

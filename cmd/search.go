@@ -3,15 +3,17 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/MChorfa/ggvalet/internal/client"
 	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
-	gl "github.com/xanzy/go-gitlab"
 )
 
 func searchCmd() *cobra.Command {
@@ -149,49 +151,46 @@ func doSearch(c *client.Client, hostname, query, scope, project, group string) (
 }
 
 func searchIssues(c *client.Client, hostname, query, project string) ([]searchResult, error) {
+	ctx := context.Background()
 	var results []searchResult
+
 	if project != "" {
-		issues, _, err := c.GL.Issues.ListProjectIssues(project, &gl.ListProjectIssuesOptions{
-			Search:      gl.Ptr(query),
-			ListOptions: gl.ListOptions{PerPage: 25},
+		issues, err := c.Provider.ListIssues(ctx, project, provider.ListIssuesOptions{
+			Search:  query,
+			PerPage: 25,
 		})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("could not search issues in %s: %w", project, err)
 		}
 		for _, iss := range issues {
-			proj := ""
-			if iss.References != nil {
-				proj = pathBefore(iss.References.Full, "#")
-			}
 			results = append(results, searchResult{
 				Type:    "issue",
 				IID:     fmt.Sprintf("#%d", iss.IID),
 				Title:   iss.Title,
 				State:   iss.State,
-				Project: proj,
+				Project: iss.Project,
 				URL:     iss.WebURL,
 			})
 		}
 	} else {
-		issues, _, err := c.GL.Issues.ListIssues(&gl.ListIssuesOptions{
-			Search:      gl.Ptr(query),
-			Scope:       gl.Ptr("all"),
-			ListOptions: gl.ListOptions{PerPage: 25},
+		// Cross-project search: ListMyIssues returns issues assigned to the
+		// authenticated user (closest equivalent to GitLab's scope=all search).
+		issues, err := c.Provider.ListMyIssues(ctx, provider.ListMyIssuesOptions{
+			PerPage: 25,
 		})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("could not search issues across projects: %w", err)
 		}
 		for _, iss := range issues {
-			proj := ""
-			if iss.References != nil {
-				proj = pathBefore(iss.References.Full, "#")
+			if query != "" && !containsCI(iss.Title, query) && !containsCI(iss.Body, query) {
+				continue
 			}
 			results = append(results, searchResult{
 				Type:    "issue",
 				IID:     fmt.Sprintf("#%d", iss.IID),
 				Title:   iss.Title,
 				State:   iss.State,
-				Project: proj,
+				Project: iss.Project,
 				URL:     iss.WebURL,
 			})
 		}
@@ -200,21 +199,22 @@ func searchIssues(c *client.Client, hostname, query, project string) ([]searchRe
 }
 
 func searchMRs(c *client.Client, hostname, query, project string) ([]searchResult, error) {
-	var results []searchResult
-	opts := &gl.ListProjectMergeRequestsOptions{
-		Search:      gl.Ptr(query),
-		ListOptions: gl.ListOptions{PerPage: 25},
-	}
 	if project == "" {
 		project = cfg.DefaultProject
 	}
 	if project == "" {
-		return nil, nil
+		return nil, fmt.Errorf("a project is required to search merge requests — set --project or configure a default project")
 	}
-	mrs, _, err := c.GL.MergeRequests.ListProjectMergeRequests(project, opts)
+
+	mrs, err := c.Provider.ListMergeRequests(context.Background(), project, provider.ListMergeRequestsOptions{
+		Search:  query,
+		PerPage: 25,
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not search merge requests in %s: %w", project, err)
 	}
+
+	var results []searchResult
 	for _, mr := range mrs {
 		results = append(results, searchResult{
 			Type:    "mr",
@@ -229,21 +229,23 @@ func searchMRs(c *client.Client, hostname, query, project string) ([]searchResul
 }
 
 func searchMilestones(c *client.Client, hostname, query, project string) ([]searchResult, error) {
-	var results []searchResult
 	if project == "" {
 		project = cfg.DefaultProject
 	}
 	if project == "" {
-		return nil, nil
+		return nil, fmt.Errorf("a project is required to search milestones — set --project or configure a default project")
 	}
-	ms, _, err := c.GL.Milestones.ListMilestones(project, &gl.ListMilestonesOptions{
-		Search:      gl.Ptr(query),
-		ListOptions: gl.ListOptions{PerPage: 25},
+
+	mss, err := c.Provider.ListMilestones(context.Background(), project, provider.ListMilestonesOptions{
+		Search:  query,
+		PerPage: 25,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not search milestones in %s: %w", project, err)
 	}
-	for _, m := range ms {
+
+	var results []searchResult
+	for _, m := range mss {
 		results = append(results, searchResult{
 			Type:    "milestone",
 			IID:     fmt.Sprintf("%%%d", m.IID),
@@ -256,12 +258,7 @@ func searchMilestones(c *client.Client, hostname, query, project string) ([]sear
 	return results, nil
 }
 
-// pathBefore returns the part of s before the first occurrence of sep.
-func pathBefore(s, sep string) string {
-	for i := 0; i < len(s)-len(sep)+1; i++ {
-		if s[i:i+len(sep)] == sep {
-			return s[:i]
-		}
-	}
-	return s
+// containsCI is a case-insensitive substring check.
+func containsCI(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }

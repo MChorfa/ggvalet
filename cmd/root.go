@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/MChorfa/ggvalet/internal/client"
 	"github.com/MChorfa/ggvalet/internal/config"
+	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
@@ -263,3 +265,8 @@ var (
 func ok(format string, a ...any)   { fmt.Printf(colorOK("✓ ")+format+"\n", a...) }
 func fail(format string, a ...any) { fmt.Fprintf(os.Stderr, colorErr("✗ ")+format+"\n", a...) }
 func info(format string, a ...any) { fmt.Printf(colorInfo("→ ")+format+"\n", a...) }
+
+// isUnsupported reports whether err is provider.ErrUnsupported, indicating the
+// active provider does not implement the requested operation (e.g. epics on
+// GitHub). Callers should gracefully degrade rather than hard-fail.
+func isUnsupported(err error) bool { return errors.Is(err, provider.ErrUnsupported) }

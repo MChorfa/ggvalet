@@ -333,7 +333,20 @@ func testGiteaHandler(t *testing.T, w http.ResponseWriter, r *http.Request) {
 	case path == "/version":
 		fmt.Fprint(w, `{"version": "1.22.0"}`)
 	case path == "/repos/issues/search":
-		fmt.Fprintf(w, "[%s]", issueJSON(1))
+		// ListMyIssues sends type=issues; ListMyMergeRequests sends type=pulls.
+		if r.URL.Query().Get("type") == "pulls" {
+			// Return a PR-shaped issue with a repository field so
+			// ListMyMergeRequests can extract owner/repo and fetch the full PR.
+			fmt.Fprintf(w, `[%s]`, fmt.Sprintf(`{
+				"id": 50, "number": 3, "title": "pr 3", "body": "pr body", "state": "open",
+				"user": {"id": 1, "login": "alice"},
+				"pull_request": {"merged": false},
+				"repository": {"id": 99, "name": "repo", "owner": "owner", "full_name": "owner/repo"},
+				"created_at": "%s", "updated_at": "%s"
+			}`, now.Format(time.RFC3339), now.Format(time.RFC3339)))
+		} else {
+			fmt.Fprintf(w, "[%s]", issueJSON(1))
+		}
 	case path == "/repos/owner/repo/issues" && r.Method == "GET":
 		fmt.Fprintf(w, "[%s]", issueJSON(1))
 	case path == "/repos/owner/repo/issues" && r.Method == "POST":
@@ -367,6 +380,8 @@ func testGiteaHandler(t *testing.T, w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"merged": true}`)
 	case path == "/users/search":
 		fmt.Fprint(w, userJSON)
+	case path == "/repos/owner/repo/milestones" && r.Method == "GET":
+		fmt.Fprint(w, `[{"id": 5, "title": "v1.0", "description": "First release", "state": "open", "due_on": "2026-01-14T00:00:00Z"}]`)
 	case strings.HasPrefix(path, "/repos/owner/repo/milestones/"):
 		fmt.Fprint(w, milestoneJSON)
 	default:
@@ -476,6 +491,27 @@ func TestGitea_ListMergeRequests(t *testing.T) {
 	}
 	if len(prs) != 1 || prs[0].IID != 3 {
 		t.Errorf("ListMergeRequests = %+v", prs)
+	}
+}
+
+func TestGitea_ListMyMergeRequests(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	mrs, err := g.ListMyMergeRequests(context.Background(), provider.ListMyMergeRequestsOptions{State: "opened"})
+	if err != nil {
+		t.Fatalf("ListMyMergeRequests: %v", err)
+	}
+	if len(mrs) != 1 {
+		t.Fatalf("len(mrs) = %d; want 1", len(mrs))
+	}
+	// The search returns issue #3 in owner/repo; the handler then serves
+	// the full PR (prJSON(3)) for the GetPullRequest call.
+	if mrs[0].IID != 3 || mrs[0].Project != "owner/repo" {
+		t.Errorf("mr = %+v; want IID=3 Project=owner/repo", mrs[0])
+	}
+	if mrs[0].SourceBranch != "feature" {
+		t.Errorf("SourceBranch = %q; want feature", mrs[0].SourceBranch)
 	}
 }
 
@@ -624,9 +660,6 @@ func TestGitea_Unsupported(t *testing.T) {
 	g, srv := newTestGitea(t)
 	defer srv.Close()
 
-	if _, err := g.ListMyMergeRequests(context.Background(), provider.ListMyMergeRequestsOptions{}); !errors.Is(err, provider.ErrUnsupported) {
-		t.Errorf("ListMyMergeRequests error = %v, want ErrUnsupported", err)
-	}
 	if _, err := g.CreateGroupMilestone(context.Background(), 1, provider.CreateMilestoneOptions{}); !errors.Is(err, provider.ErrUnsupported) {
 		t.Errorf("CreateGroupMilestone error = %v, want ErrUnsupported", err)
 	}
@@ -762,5 +795,45 @@ func TestGitea_CreateIssue_LabelNotFound(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "missing") {
 		t.Errorf("error = %q, expected to contain 'missing'", err.Error())
+	}
+}
+
+func TestGitea_ListMilestones_DecodesResponse(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	ms, err := g.ListMilestones(context.Background(), "owner/repo", provider.ListMilestonesOptions{State: "open", PerPage: 20})
+	if err != nil {
+		t.Fatalf("ListMilestones: %v", err)
+	}
+	if len(ms) != 1 {
+		t.Fatalf("len(ms) = %d; want 1", len(ms))
+	}
+	if ms[0].Title != "v1.0" || ms[0].State != "open" {
+		t.Errorf("ms[0] = %+v", ms[0])
+	}
+	if ms[0].DueDate != "2026-01-14" {
+		t.Errorf("ms[0].DueDate = %q; want 2026-01-14", ms[0].DueDate)
+	}
+	if ms[0].Description != "First release" {
+		t.Errorf("ms[0].Description = %q", ms[0].Description)
+	}
+}
+
+func TestGitea_ListMilestones_RejectsBadProject(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	if _, err := g.ListMilestones(context.Background(), "no-slash", provider.ListMilestonesOptions{}); err == nil {
+		t.Fatal("expected error for project without slash")
+	}
+}
+
+func TestGitea_ResolveGroup_Unsupported(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	if _, err := g.ResolveGroup(context.Background(), "owner"); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("ResolveGroup err = %v; want ErrUnsupported", err)
 	}
 }

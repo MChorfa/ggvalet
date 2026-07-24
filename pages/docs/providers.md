@@ -17,8 +17,8 @@ switches adapters at startup based on `GLVALET_PROVIDER`.
 
 | Command surface | GitLab | GitHub | Gitea |
 |---|---|---|---|
-| `issue` (list/mine/get/create/update/close/comment) | GA | `list --milestone` unsupported | `list --milestone` unsupported |
-| `mr` (list/mine/create/approve/merge/diff/close) | GA | `mine`, `approve` unsupported | `mine` unsupported |
+| `issue` (list/mine/get/create/update/close/comment) | GA | GA | GA |
+| `mr` (list/mine/create/approve/merge/diff/close) | GA | GA | GA |
 | `label` (list/create/sync) | GA | GA | GA |
 | `epic`, group `milestone` | GA | no equivalent | no equivalent |
 | `report`, `journal`, `hosts`, `doctor`, `cache`, `receipt` | GA | GA | GA |
@@ -35,6 +35,14 @@ Notes:
   integration tests in CI.
 - `plan` is provider-driven, but GitHub and Gitea cannot create group-level
   milestones or epics, so plans containing those operations will fail.
+- GitHub `mr mine` uses the Search API (`is:pr assignee:@me`); branch names
+  are not available in search results and are left empty in the output.
+- GitHub `mr approve` submits an `APPROVE` review (GitHub's approval model).
+- GitHub `issue list --milestone` and `issue update --milestone` resolve the
+  milestone title to a number via `ListMilestones` before the API call.
+- Gitea `mr mine` uses the issues search API with `type=pulls` and fetches
+  each PR individually for branch names (N+1, acceptable for small listings).
+- Issue `weight` is GitLab-only; GitHub and Gitea have no weight concept.
 
 ## GitLab setup
 

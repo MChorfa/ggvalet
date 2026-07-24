@@ -908,3 +908,211 @@ func TestGitLab_GetMergeRequestDiff_MapsChanges(t *testing.T) {
 		t.Errorf("diffs[1] = %+v; want rename old.go→new.go", diffs[1])
 	}
 }
+
+func TestGitLab_ListMilestones_DecodesResponse(t *testing.T) {
+	t.Parallel()
+
+	var gotState, gotSearch, gotPath string
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotState = r.URL.Query().Get("state")
+		gotSearch = r.URL.Query().Get("search")
+		writeJSON(w, []map[string]any{
+			{"id": 11, "iid": 1, "title": "Sprint 1", "state": "active",
+				"start_date": "2026-01-01", "due_date": "2026-01-14",
+				"description": "First sprint", "web_url": "https://gitlab.example.com/group/proj/-/milestones/1"},
+		})
+	}))
+
+	ms, err := prov.ListMilestones(context.Background(), "group/proj",
+		provider.ListMilestonesOptions{State: "active", Search: "Sprint", PerPage: 20})
+	if err != nil {
+		t.Fatalf("ListMilestones: %v", err)
+	}
+	if len(ms) != 1 {
+		t.Fatalf("len(ms) = %d; want 1", len(ms))
+	}
+	if ms[0].Title != "Sprint 1" || ms[0].State != "active" {
+		t.Errorf("ms[0] = %+v", ms[0])
+	}
+	if ms[0].StartDate != "2026-01-01" || ms[0].DueDate != "2026-01-14" {
+		t.Errorf("ms[0] dates = %q / %q", ms[0].StartDate, ms[0].DueDate)
+	}
+	if ms[0].WebURL == "" {
+		t.Errorf("ms[0].WebURL should be populated for project milestones")
+	}
+	if gotState != "active" || gotSearch != "Sprint" {
+		t.Errorf("query state=%q search=%q", gotState, gotSearch)
+	}
+	if !strings.Contains(gotPath, "/milestones") {
+		t.Errorf("path = %q; want milestones endpoint", gotPath)
+	}
+}
+
+func TestGitLab_ListMilestones_ReturnsErrorOn403(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+
+	if _, err := prov.ListMilestones(context.Background(), "group/proj", provider.ListMilestonesOptions{}); err == nil {
+		t.Fatal("expected error on 403")
+	}
+}
+
+func TestGitLab_ResolveGroup_ReturnsNumericID(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{"id": 42, "full_path": "my-org/sub"})
+	}))
+
+	id, err := prov.ResolveGroup(context.Background(), "my-org/sub")
+	if err != nil {
+		t.Fatalf("ResolveGroup: %v", err)
+	}
+	if id != 42 {
+		t.Errorf("id = %d; want 42", id)
+	}
+}
+
+func TestGitLab_ResolveGroup_ReturnsErrorOn404(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+
+	if _, err := prov.ResolveGroup(context.Background(), "missing"); err == nil {
+		t.Fatal("expected error on 404")
+	}
+}
+
+func TestGitLab_ListGroupEpics_DecodesAuthorAndDates(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, []map[string]any{
+			{"id": 7, "iid": 3, "title": "Epic A", "state": "opened",
+				"description": "desc", "labels": []string{"red"},
+				"author": map[string]any{"id": 9, "username": "alice", "name": "Alice", "web_url": "https://gitlab.example.com/u/alice"},
+				"start_date": "2026-02-01", "due_date": "2026-03-01",
+				"web_url": "https://gitlab.example.com/groups/g/-/epics/3"},
+		})
+	}))
+
+	epics, err := prov.ListGroupEpics(context.Background(), 5, provider.ListGroupEpicsOptions{State: "opened", PerPage: 10})
+	if err != nil {
+		t.Fatalf("ListGroupEpics: %v", err)
+	}
+	if len(epics) != 1 {
+		t.Fatalf("len(epics) = %d; want 1", len(epics))
+	}
+	ep := epics[0]
+	if ep.IID != 3 || ep.Title != "Epic A" || ep.State != "opened" {
+		t.Errorf("epic = %+v", ep)
+	}
+	if ep.Author.Username != "alice" || ep.Author.ID != 9 {
+		t.Errorf("author = %+v", ep.Author)
+	}
+	if ep.StartDate != "2026-02-01" || ep.DueDate != "2026-03-01" {
+		t.Errorf("dates = %q / %q", ep.StartDate, ep.DueDate)
+	}
+	if ep.GroupID != 5 {
+		t.Errorf("GroupID = %d; want 5", ep.GroupID)
+	}
+	if !containsString(ep.Labels, "red") {
+		t.Errorf("labels = %v", ep.Labels)
+	}
+}
+
+func TestGitLab_ListGroupMilestones_DecodesResponse(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, []map[string]any{
+			{"id": 21, "iid": 2, "title": "Q1", "state": "active",
+				"start_date": "2026-01-01", "due_date": "2026-03-31", "description": "Q1 plan"},
+		})
+	}))
+
+	ms, err := prov.ListGroupMilestones(context.Background(), 7, provider.ListGroupMilestonesOptions{State: "active", PerPage: 10})
+	if err != nil {
+		t.Fatalf("ListGroupMilestones: %v", err)
+	}
+	if len(ms) != 1 {
+		t.Fatalf("len(ms) = %d; want 1", len(ms))
+	}
+	if ms[0].Title != "Q1" || ms[0].GroupID != 7 {
+		t.Errorf("ms[0] = %+v", ms[0])
+	}
+	if ms[0].StartDate != "2026-01-01" || ms[0].DueDate != "2026-03-31" {
+		t.Errorf("ms[0] dates = %q / %q", ms[0].StartDate, ms[0].DueDate)
+	}
+}
+
+func TestGitLab_CreateGroupMilestone_SendsTitleAndDates(t *testing.T) {
+	t.Parallel()
+
+	var gotTitle, gotStart, gotDue string
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		gotTitle, _ = body["title"].(string)
+		gotStart, _ = body["start_date"].(string)
+		gotDue, _ = body["due_date"].(string)
+		writeJSON(w, map[string]any{"id": 31, "iid": 1, "title": gotTitle, "state": "active",
+			"start_date": gotStart, "due_date": gotDue})
+	}))
+
+	ms, err := prov.CreateGroupMilestone(context.Background(), 8, provider.CreateMilestoneOptions{
+		Title:     "Sprint 2",
+		StartDate: "2026-04-01",
+		DueDate:   "2026-04-14",
+	})
+	if err != nil {
+		t.Fatalf("CreateGroupMilestone: %v", err)
+	}
+	if ms.Title != "Sprint 2" || ms.GroupID != 8 {
+		t.Errorf("ms = %+v", ms)
+	}
+	if gotTitle != "Sprint 2" || gotStart != "2026-04-01" || gotDue != "2026-04-14" {
+		t.Errorf("body = title=%q start=%q due=%q", gotTitle, gotStart, gotDue)
+	}
+}
+
+func TestGitLab_CreateGroupEpic_SendsTitleAndLabels(t *testing.T) {
+	t.Parallel()
+
+	var gotTitle, gotLabels string
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		gotTitle, _ = body["title"].(string)
+		// GitLab's LabelOptions marshals labels as a comma-separated string.
+		if l, ok := body["labels"].(string); ok {
+			gotLabels = l
+		}
+		writeJSON(w, map[string]any{"id": 41, "iid": 5, "title": gotTitle, "state": "opened",
+			"author": map[string]any{"id": 1, "username": "bot", "name": "Bot", "web_url": "u"}})
+	}))
+
+	ep, err := prov.CreateGroupEpic(context.Background(), 9, provider.CreateEpicOptions{
+		Title:       "New Epic",
+		Description: "desc",
+		Labels:      []string{"red", "blue"},
+	})
+	if err != nil {
+		t.Fatalf("CreateGroupEpic: %v", err)
+	}
+	if ep.Title != "New Epic" || ep.IID != 5 || ep.GroupID != 9 {
+		t.Errorf("ep = %+v", ep)
+	}
+	if gotTitle != "New Epic" {
+		t.Errorf("body title = %q", gotTitle)
+	}
+	if !strings.Contains(gotLabels, "red") || !strings.Contains(gotLabels, "blue") {
+		t.Errorf("body labels = %q; want red and blue", gotLabels)
+	}
+}

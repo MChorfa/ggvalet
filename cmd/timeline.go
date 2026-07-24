@@ -16,15 +16,16 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/MChorfa/ggvalet/internal/parallel"
+	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
-	gl "github.com/xanzy/go-gitlab"
 )
 
 // ─── Timeline styles ──────────────────────────────────────────────────────────
@@ -86,17 +87,30 @@ func timelineCmd() *cobra.Command {
 			results := make(chan result, 2)
 
 			pool := parallel.New(2)
+			ctx := context.Background()
 
 			// Epics
 			if group != "" {
 				pool.Go(func() {
-					epics, _, err := glClient.GL.Epics.ListGroupEpics(group,
-						&gl.ListGroupEpicsOptions{
-							State:       gl.Ptr("all"),
-							ListOptions: gl.ListOptions{PerPage: 100},
-						})
+					groupID, err := glClient.Provider.ResolveGroup(ctx, group)
 					if err != nil {
-						results <- result{err: fmt.Errorf("epics: %w", err)}
+						if isUnsupported(err) {
+							results <- result{}
+							return
+						}
+						results <- result{err: fmt.Errorf("resolve group %q: %w", group, err)}
+						return
+					}
+					epics, err := glClient.Provider.ListGroupEpics(ctx, groupID, provider.ListGroupEpicsOptions{
+						State:   "all",
+						PerPage: 100,
+					})
+					if err != nil {
+						if isUnsupported(err) {
+							results <- result{}
+							return
+						}
+						results <- result{err: fmt.Errorf("could not list epics for %s: %w", group, err)}
 						return
 					}
 					var its []tlItem
@@ -120,17 +134,19 @@ func timelineCmd() *cobra.Command {
 			// Milestones
 			if project != "" {
 				pool.Go(func() {
-					ms, _, err := glClient.GL.Milestones.ListMilestones(project,
-						&gl.ListMilestonesOptions{
-							State:       gl.Ptr("all"),
-							ListOptions: gl.ListOptions{PerPage: 100},
-						})
+					mss, err := glClient.Provider.ListMilestones(ctx, project, provider.ListMilestonesOptions{
+						PerPage: 100,
+					})
 					if err != nil {
-						results <- result{err: fmt.Errorf("milestones: %w", err)}
+						if isUnsupported(err) {
+							results <- result{}
+							return
+						}
+						results <- result{err: fmt.Errorf("could not list milestones for %s: %w", project, err)}
 						return
 					}
 					var its []tlItem
-					for _, m := range ms {
+					for _, m := range mss {
 						its = append(its, tlItem{
 							label:     fmt.Sprintf("⬡ %s", m.Title),
 							kind:      "milestone",
@@ -385,10 +401,13 @@ func parseDateWindow(since, until string) (time.Time, time.Time) {
 	return s, u
 }
 
-func isoToTime(iso *gl.ISOTime) *time.Time {
-	if iso == nil {
+func isoToTime(iso string) *time.Time {
+	if iso == "" {
 		return nil
 	}
-	t := time.Time(*iso)
+	t, err := time.Parse("2006-01-02", iso)
+	if err != nil {
+		return nil
+	}
 	return &t
 }

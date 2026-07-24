@@ -162,6 +162,9 @@ type Epic struct {
 	Description string
 	State       string
 	Labels      []string
+	Author      User
+	StartDate   string // YYYY-MM-DD (empty if unset)
+	DueDate     string // YYYY-MM-DD (empty if unset)
 	WebURL      string
 	GroupID     int
 }
@@ -179,6 +182,15 @@ type CreateEpicOptions struct {
 	Title       string
 	Description string
 	Labels      []string
+}
+
+// ListMilestonesOptions filters a project-scoped milestone list query.
+// Milestones are repo-scoped on GitHub/Gitea and project-scoped on GitLab.
+type ListMilestonesOptions struct {
+	State   string // active|closed (empty = both)
+	Search  string
+	Page    int
+	PerPage int
 }
 
 // ListGroupMilestonesOptions filters a group milestone list query.
@@ -305,9 +317,16 @@ type Provider interface {
 	// User surface.
 	ListUsers(ctx context.Context, opts ListUsersOptions) ([]User, error)
 
+	// Milestone surface (project-scoped).
+	ListMilestones(ctx context.Context, project string, opts ListMilestonesOptions) ([]Milestone, error)
+
 	// Milestone surface (group-scoped on GitLab).
 	CreateGroupMilestone(ctx context.Context, groupID int, opts CreateMilestoneOptions) (Milestone, error)
 	ListGroupMilestones(ctx context.Context, groupID int, opts ListGroupMilestonesOptions) ([]Milestone, error)
+
+	// ResolveGroup resolves a group/org path (e.g. "my-org/sub-group") to its
+	// numeric ID. ErrUnsupported on hosts without group-level concepts.
+	ResolveGroup(ctx context.Context, groupPath string) (int, error)
 
 	// Epic surface (group-scoped on GitLab; ErrUnsupported on GitHub).
 	CreateGroupEpic(ctx context.Context, groupID int, opts CreateEpicOptions) (Epic, error)

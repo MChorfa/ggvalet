@@ -174,6 +174,18 @@ func (p *Provider) ListUsers(ctx context.Context, opts provider.ListUsersOptions
 	})
 }
 
+func (p *Provider) ListMilestones(ctx context.Context, project string, opts provider.ListMilestonesOptions) ([]provider.Milestone, error) {
+	return call(ctx, p, "list", "milestone", project, opts, func() ([]provider.Milestone, error) {
+		return p.inner.ListMilestones(ctx, project, opts)
+	})
+}
+
+func (p *Provider) ResolveGroup(ctx context.Context, groupPath string) (int, error) {
+	return call(ctx, p, "resolve", "group", groupPath, groupPath, func() (int, error) {
+		return p.inner.ResolveGroup(ctx, groupPath)
+	})
+}
+
 func (p *Provider) CreateGroupMilestone(ctx context.Context, groupID int, opts provider.CreateMilestoneOptions) (provider.Milestone, error) {
 	return call(ctx, p, "create", "milestone", fmt.Sprint(groupID), opts, func() (provider.Milestone, error) {
 		return p.inner.CreateGroupMilestone(ctx, groupID, opts)

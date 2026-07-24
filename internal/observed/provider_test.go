@@ -67,6 +67,12 @@ func (*completeProvider) CreateGroupMilestone(context.Context, int, provider.Cre
 func (*completeProvider) ListGroupMilestones(context.Context, int, provider.ListGroupMilestonesOptions) ([]provider.Milestone, error) {
 	return nil, nil
 }
+func (*completeProvider) ListMilestones(context.Context, string, provider.ListMilestonesOptions) ([]provider.Milestone, error) {
+	return nil, nil
+}
+func (*completeProvider) ResolveGroup(context.Context, string) (int, error) {
+	return 0, nil
+}
 func (*completeProvider) CreateGroupEpic(context.Context, int, provider.CreateEpicOptions) (provider.Epic, error) {
 	return provider.Epic{}, nil
 }
@@ -170,13 +176,15 @@ func TestProviderDecoratesCompleteInterface(t *testing.T) {
 	_, _ = p.ListUsers(ctx, provider.ListUsersOptions{})
 	_, _ = p.CreateGroupMilestone(ctx, 1, provider.CreateMilestoneOptions{})
 	_, _ = p.ListGroupMilestones(ctx, 1, provider.ListGroupMilestonesOptions{})
+	_, _ = p.ListMilestones(ctx, "g/p", provider.ListMilestonesOptions{})
+	_, _ = p.ResolveGroup(ctx, "g")
 	_, _ = p.CreateGroupEpic(ctx, 1, provider.CreateEpicOptions{})
 	_, _ = p.ListGroupEpics(ctx, 1, provider.ListGroupEpicsOptions{})
 	if err := p.LinkIssueToEpic(ctx, 1, 2, 3); err != nil {
 		t.Fatal(err)
 	}
 	receipts, err := s.Receipts(ctx)
-	if err != nil || len(receipts) != 42 {
+	if err != nil || len(receipts) != 46 {
 		t.Fatalf("receipts=%d err=%v", len(receipts), err)
 	}
 }

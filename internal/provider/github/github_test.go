@@ -553,21 +553,40 @@ func TestGitHub_UpdateIssue_MapsStateAndMilestone(t *testing.T) {
 	}
 }
 
-// TestGitHub_UpdateIssue_MilestoneByTitleReturnsErrUnsupported verifies that
-// providing a Milestone title without a MilestoneID returns ErrUnsupported.
-func TestGitHub_UpdateIssue_MilestoneByTitleReturnsErrUnsupported(t *testing.T) {
+// TestGitHub_UpdateIssue_MilestoneByTitleResolvesNumber verifies that
+// providing a Milestone title (without MilestoneID) resolves the title to
+// a number via ListMilestones and sends it in the PATCH body.
+func TestGitHub_UpdateIssue_MilestoneByTitleResolvesNumber(t *testing.T) {
 	t.Parallel()
 
-	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
+	var capturedMilestone any
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/milestones") && r.Method == "GET":
+			writeJSON(w, []map[string]any{
+				{"id": 1, "number": 1, "title": "Sprint 1"},
+				{"id": 7, "number": 7, "title": "Sprint 2"},
+			})
+		case r.Method == "PATCH":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			capturedMilestone = body["milestone"]
+			writeJSON(w, map[string]any{"id": 300, "number": 1, "title": "Fixed", "state": "open"})
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
 	}))
 
-	ms := "Sprint 1"
+	ms := "Sprint 2"
 	_, err := prov.UpdateIssue(context.Background(), "owner/repo", 1, provider.UpdateIssueOptions{
 		Milestone: &ms,
 	})
-	if !errors.Is(err, provider.ErrUnsupported) {
-		t.Errorf("err = %v; want ErrUnsupported", err)
+	if err != nil {
+		t.Fatalf("UpdateIssue: %v", err)
+	}
+	// Sprint 2 → number 7
+	if capturedMilestone != float64(7) {
+		t.Errorf("milestone = %v; want 7", capturedMilestone)
 	}
 }
 
@@ -715,35 +734,110 @@ func TestGitHub_ListMyIssues_AssignedFilterStateAndRepoProject(t *testing.T) {
 	}
 }
 
-func TestGitHub_ListIssues_MilestoneTitleUnsupported(t *testing.T) {
+// TestGitHub_ListIssues_MilestoneTitleResolvesNumber verifies that a
+// milestone title in ListIssuesOptions is resolved to a number via
+// ListMilestones and used as the milestone query parameter.
+func TestGitHub_ListIssues_MilestoneTitleResolvesNumber(t *testing.T) {
 	t.Parallel()
-	// GitHub filters by milestone number, not title — title is ErrUnsupported,
-	// consistent with UpdateIssue's milestone handling. No network call needed.
-	prov := githubprov.NewWithClient(gh.NewClient(nil), "github.com")
+
+	var milestoneParam string
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/milestones") && r.Method == "GET":
+			writeJSON(w, []map[string]any{
+				{"id": 1, "number": 5, "title": "v1.0"},
+			})
+		case strings.Contains(r.URL.Path, "/issues") && r.Method == "GET":
+			milestoneParam = r.URL.Query().Get("milestone")
+			writeJSON(w, []map[string]any{})
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+
 	_, err := prov.ListIssues(context.Background(), "owner/repo",
 		provider.ListIssuesOptions{Milestone: "v1.0"})
-	if !errors.Is(err, provider.ErrUnsupported) {
-		t.Errorf("err = %v; want provider.ErrUnsupported", err)
+	if err != nil {
+		t.Fatalf("ListIssues: %v", err)
+	}
+	if milestoneParam != "5" {
+		t.Errorf("milestone query param = %q; want 5", milestoneParam)
 	}
 }
 
-func TestGitHub_ListMyMergeRequests_Unsupported(t *testing.T) {
+// TestGitHub_ListMyMergeRequests_UsesSearchAPI verifies that ListMyMergeRequests
+// queries the Search API with is:pr assignee:@me and maps results to MergeRequest.
+func TestGitHub_ListMyMergeRequests_UsesSearchAPI(t *testing.T) {
 	t.Parallel()
-	// No cross-repo "assigned to me" PR scope on the PullRequests API.
-	prov := githubprov.NewWithClient(gh.NewClient(nil), "github.com")
-	_, err := prov.ListMyMergeRequests(context.Background(), provider.ListMyMergeRequestsOptions{})
-	if !errors.Is(err, provider.ErrUnsupported) {
-		t.Errorf("err = %v; want provider.ErrUnsupported", err)
+
+	var query string
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/search/issues") {
+			query = r.URL.Query().Get("q")
+			writeJSON(w, map[string]any{
+				"total_count": 1,
+				"items": []map[string]any{
+					{
+						"id":     100,
+						"number": 42,
+						"title":  "Fix bug",
+						"state":  "open",
+						"html_url": "https://github.com/owner/repo/pull/42",
+						"repository": map[string]any{
+							"full_name": "owner/repo",
+						},
+						"pull_request": map[string]any{"url": "https://api.github.com/repos/owner/repo/pulls/42"},
+						"user": map[string]any{"id": 1, "login": "alice"},
+					},
+				},
+			})
+			return
+		}
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+
+	mrs, err := prov.ListMyMergeRequests(context.Background(), provider.ListMyMergeRequestsOptions{State: "opened"})
+	if err != nil {
+		t.Fatalf("ListMyMergeRequests: %v", err)
+	}
+	if !strings.Contains(query, "is:pr") || !strings.Contains(query, "assignee:@me") {
+		t.Errorf("query = %q; must contain is:pr and assignee:@me", query)
+	}
+	if !strings.Contains(query, "is:open") {
+		t.Errorf("query = %q; opened state must map to is:open", query)
+	}
+	if len(mrs) != 1 {
+		t.Fatalf("len(mrs) = %d; want 1", len(mrs))
+	}
+	if mrs[0].IID != 42 || mrs[0].Project != "owner/repo" {
+		t.Errorf("mr = %+v; want IID=42 Project=owner/repo", mrs[0])
 	}
 }
 
-func TestGitHub_ApproveMergeRequest_Unsupported(t *testing.T) {
+// TestGitHub_ApproveMergeRequest_CreatesReview verifies that ApproveMergeRequest
+// POSTs a review with event=APPROVE to the pulls reviews endpoint.
+func TestGitHub_ApproveMergeRequest_CreatesReview(t *testing.T) {
 	t.Parallel()
-	// GitHub approvals are reviews by another user, not a self-service action.
-	prov := githubprov.NewWithClient(gh.NewClient(nil), "github.com")
+
+	var event string
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// POST /repos/owner/repo/pulls/3/reviews
+		if strings.HasSuffix(r.URL.Path, "/pulls/3/reviews") && r.Method == "POST" {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			event, _ = body["event"].(string)
+			writeJSON(w, map[string]any{"id": 1, "state": "APPROVED"})
+			return
+		}
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+
 	err := prov.ApproveMergeRequest(context.Background(), "owner/repo", 3)
-	if !errors.Is(err, provider.ErrUnsupported) {
-		t.Errorf("err = %v; want provider.ErrUnsupported", err)
+	if err != nil {
+		t.Fatalf("ApproveMergeRequest: %v", err)
+	}
+	if event != "APPROVE" {
+		t.Errorf("review event = %q; want APPROVE", event)
 	}
 }
 
@@ -811,5 +905,84 @@ func TestGitHub_GetMergeRequestDiff_MapsStatusToFlags(t *testing.T) {
 	}
 	if !diffs[2].DeletedFile {
 		t.Errorf("diffs[2] = %+v; want DeletedFile", diffs[2])
+	}
+}
+
+func TestGitHub_ListMilestones_DecodesResponse(t *testing.T) {
+	t.Parallel()
+
+	var gotState, gotPath string
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotState = r.URL.Query().Get("state")
+		writeJSON(w, []map[string]any{
+			{"id": 11, "number": 1, "title": "Sprint 1", "state": "open",
+				"description": "First sprint",
+				"html_url":    "https://github.com/owner/repo/milestone/1",
+				"due_on":      "2026-01-14T00:00:00Z"},
+		})
+	}))
+
+	ms, err := prov.ListMilestones(context.Background(), "owner/repo",
+		provider.ListMilestonesOptions{State: "open", PerPage: 20})
+	if err != nil {
+		t.Fatalf("ListMilestones: %v", err)
+	}
+	if len(ms) != 1 {
+		t.Fatalf("len(ms) = %d; want 1", len(ms))
+	}
+	if ms[0].Title != "Sprint 1" || ms[0].State != "open" {
+		t.Errorf("ms[0] = %+v", ms[0])
+	}
+	if ms[0].DueDate != "2026-01-14" {
+		t.Errorf("ms[0].DueDate = %q; want 2026-01-14", ms[0].DueDate)
+	}
+	if ms[0].WebURL == "" {
+		t.Errorf("ms[0].WebURL should be populated")
+	}
+	if gotState != "open" {
+		t.Errorf("state query = %q; want open", gotState)
+	}
+	if !strings.Contains(gotPath, "/milestones") {
+		t.Errorf("path = %q; want milestones endpoint", gotPath)
+	}
+}
+
+func TestGitHub_ListMilestones_DefaultsStateToAll(t *testing.T) {
+	t.Parallel()
+
+	var gotState string
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotState = r.URL.Query().Get("state")
+		writeJSON(w, []map[string]any{})
+	}))
+
+	if _, err := prov.ListMilestones(context.Background(), "owner/repo", provider.ListMilestonesOptions{}); err != nil {
+		t.Fatalf("ListMilestones: %v", err)
+	}
+	if gotState != "all" {
+		t.Errorf("state = %q; want all (default)", gotState)
+	}
+}
+
+func TestGitHub_ListMilestones_RejectsBadProject(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatal("handler should not be called for bad project")
+	}))
+
+	if _, err := prov.ListMilestones(context.Background(), "no-slash", provider.ListMilestonesOptions{}); err == nil {
+		t.Fatal("expected error for project without slash")
+	}
+}
+
+func TestGitHub_ResolveGroup_Unsupported(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	if _, err := prov.ResolveGroup(context.Background(), "owner"); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("ResolveGroup err = %v; want ErrUnsupported", err)
 	}
 }

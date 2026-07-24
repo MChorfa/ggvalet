@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	gl "github.com/xanzy/go-gitlab"
+	"github.com/MChorfa/ggvalet/internal/provider"
 )
 
 func TestShortHostname(t *testing.T) {
@@ -42,15 +42,6 @@ func TestParseDuration(t *testing.T) {
 	}
 }
 
-func TestPathBefore(t *testing.T) {
-	if got := pathBefore("group/project#42", "#"); got != "group/project" {
-		t.Fatalf("pathBefore: %q", got)
-	}
-	if got := pathBefore("nosep", "#"); got != "nosep" {
-		t.Fatalf("pathBefore without sep: %q", got)
-	}
-}
-
 func TestOutputHelpers(t *testing.T) {
 	ok("test ok")
 	info("test info")
@@ -78,19 +69,19 @@ func TestTUIProgressBar(t *testing.T) {
 }
 
 func TestTUIListItemFilterValue(t *testing.T) {
-	issue := &gl.Issue{IID: 42, Title: "issue title", Labels: []string{"bug"}}
+	issue := &provider.Issue{IID: 42, Title: "issue title", Labels: []string{"bug"}}
 	iit := issItem{issue}
 	if got := iit.FilterValue(); got != "42 issue title bug" {
 		t.Fatalf("issItem.FilterValue = %q", got)
 	}
 
-	epic := &gl.Epic{Title: "epic title"}
+	epic := &provider.Epic{Title: "epic title"}
 	eit := epItem{epic}
 	if got := eit.FilterValue(); got != "epic title" {
 		t.Fatalf("epItem.FilterValue = %q", got)
 	}
 
-	milestone := &gl.Milestone{Title: "v1.0"}
+	milestone := &provider.Milestone{Title: "v1.0"}
 	mit := msItem{milestone}
 	if got := mit.FilterValue(); got != "v1.0" {
 		t.Fatalf("msItem.FilterValue = %q", got)

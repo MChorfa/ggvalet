@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	gl "github.com/xanzy/go-gitlab"
+	"github.com/MChorfa/ggvalet/internal/provider"
 )
 
 func TestRenovateHelpers(t *testing.T) {
@@ -21,9 +21,9 @@ func TestRenovateHelpers(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			mr := &gl.MergeRequest{
+			mr := &provider.MergeRequest{
 				Title:        "chore(deps): update",
-				Description:  tc.desc,
+				Body:         tc.desc,
 				SourceBranch: tc.branch,
 			}
 			if got := detectBump(mr); got != tc.want {
@@ -36,19 +36,19 @@ func TestRenovateHelpers(t *testing.T) {
 		t.Fatalf("bumpLabel(unknown) = %q", got)
 	}
 
-	if !isRenovate(&gl.MergeRequest{
-		Author:       &gl.BasicUser{Username: "renovate-bot"},
+	if !isRenovate(&provider.MergeRequest{
+		Author:       provider.User{Username: "renovate-bot"},
 		SourceBranch: "renovate/patch-foo",
 	}) {
 		t.Fatal("expected MR from renovate-bot to be recognised")
 	}
-	if isRenovate(&gl.MergeRequest{
-		Author:       &gl.BasicUser{Username: "alice"},
+	if isRenovate(&provider.MergeRequest{
+		Author:       provider.User{Username: "alice"},
 		SourceBranch: "feature",
 	}) {
 		t.Fatal("non-Renovate MR should not be recognised")
 	}
-	if isRenovate(&gl.MergeRequest{SourceBranch: "feature"}) {
+	if isRenovate(&provider.MergeRequest{SourceBranch: "feature"}) {
 		t.Fatal("MR without author should not be recognised")
 	}
 

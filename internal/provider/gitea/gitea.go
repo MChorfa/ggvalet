@@ -1,8 +1,8 @@
 // Package gitea adapts the Gitea REST client (gitea.dev/sdk) to the
 // host-neutral provider.Provider interface. It targets Gitea instances
 // configured via the tea CLI (~/.config/tea/config.yml) and is [S]
-// experimental: group milestones, epics, and cross-repo "my merge requests"
-// return provider.ErrUnsupported.
+// experimental: group milestones, epics, and issue weights return
+// provider.ErrUnsupported.
 package gitea
 
 import (
@@ -320,10 +320,40 @@ func (g *Gitea) ListMergeRequests(ctx context.Context, project string, opts prov
 	return result, nil
 }
 
-// ListMyMergeRequests is unsupported: Gitea has no cross-repo "assigned to me"
-// pull-request endpoint.
-func (g *Gitea) ListMyMergeRequests(_ context.Context, _ provider.ListMyMergeRequestsOptions) ([]provider.MergeRequest, error) {
-	return nil, provider.ErrUnsupported
+// ListMyMergeRequests lists pull requests assigned to the authenticated user
+// across all repositories. Gitea has no cross-repo PR endpoint, so the
+// issues search API is used with Type=pulls; each result is then fetched as
+// a full PullRequest to recover branch names (N+1, acceptable for a "my MRs"
+// listing which is typically small).
+func (g *Gitea) ListMyMergeRequests(ctx context.Context, opts provider.ListMyMergeRequestsOptions) ([]provider.MergeRequest, error) {
+	giteaOpts := giteasdk.ListIssueOption{
+		ListOptions: giteasdk.ListOptions{Page: opts.Page, PageSize: opts.PerPage},
+		Type:        giteasdk.IssueTypePull,
+	}
+	if opts.State != "" {
+		giteaOpts.State = giteaState(opts.State)
+	}
+
+	issues, _, err := g.client.Issues.ListIssues(ctx, giteaOpts)
+	if err != nil {
+		return nil, fmt.Errorf("gitea list my merge requests: %w", err)
+	}
+
+	result := make([]provider.MergeRequest, 0, len(issues))
+	for _, iss := range issues {
+		if iss == nil || iss.Repository == nil {
+			continue
+		}
+		owner := iss.Repository.Owner
+		repo := iss.Repository.Name
+		pr, _, err := g.client.PullRequests.GetPullRequest(ctx, owner, repo, iss.Index)
+		if err != nil {
+			return nil, fmt.Errorf("gitea get pull request %s/%s/%d: %w",
+				owner, repo, iss.Index, err)
+		}
+		result = append(result, toPR(iss.Repository.FullName, pr))
+	}
+	return result, nil
 }
 
 // GetMergeRequest retrieves a single pull request by index.
@@ -593,6 +623,51 @@ func (g *Gitea) CreateGroupMilestone(_ context.Context, _ int, _ provider.Create
 // ListGroupMilestones is unsupported: Gitea milestones are repo-scoped.
 func (g *Gitea) ListGroupMilestones(_ context.Context, _ int, _ provider.ListGroupMilestonesOptions) ([]provider.Milestone, error) {
 	return nil, provider.ErrUnsupported
+}
+
+// ListMilestones returns repo-scoped milestones for the given owner/repo project.
+func (g *Gitea) ListMilestones(ctx context.Context, project string, opts provider.ListMilestonesOptions) ([]provider.Milestone, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return nil, err
+	}
+	giteaOpts := giteasdk.ListMilestoneOption{
+		ListOptions: giteasdk.ListOptions{Page: opts.Page, PageSize: opts.PerPage},
+	}
+	switch opts.State {
+	case "active", "opened", "open":
+		giteaOpts.State = giteasdk.StateOpen
+	case "closed":
+		giteaOpts.State = giteasdk.StateClosed
+	}
+	if opts.Search != "" {
+		giteaOpts.Name = opts.Search
+	}
+
+	ms, _, err := g.client.ListRepoMilestones(ctx, owner, repo, giteaOpts)
+	if err != nil {
+		return nil, fmt.Errorf("gitea list milestones for %s: %w", project, err)
+	}
+	result := make([]provider.Milestone, len(ms))
+	for i, m := range ms {
+		result[i] = provider.Milestone{
+			ID:          int(m.ID),
+			IID:         int(m.ID),
+			Title:       m.Title,
+			Description: m.Description,
+			State:       string(m.State),
+		}
+		if m.Deadline != nil {
+			result[i].DueDate = m.Deadline.Format("2006-01-02")
+		}
+	}
+	return result, nil
+}
+
+// ResolveGroup is unsupported on Gitea — the adapter does not implement
+// group-epic/group-milestone surfaces.
+func (g *Gitea) ResolveGroup(_ context.Context, _ string) (int, error) {
+	return 0, provider.ErrUnsupported
 }
 
 // CreateGroupEpic is unsupported: Gitea has no first-class epic concept.

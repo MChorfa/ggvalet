@@ -6,6 +6,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/MChorfa/ggvalet/internal/journal"
 	"github.com/MChorfa/ggvalet/internal/parallel"
+	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
@@ -43,8 +45,8 @@ var (
 	unknownStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
 )
 
-func detectBump(mr *gl.MergeRequest) bumpType {
-	text := mr.Title + " " + mr.Description + " " + mr.SourceBranch
+func detectBump(mr *provider.MergeRequest) bumpType {
+	text := mr.Title + " " + mr.Body + " " + mr.SourceBranch
 	if majorRE.MatchString(text) {
 		return bumpMajor
 	}
@@ -57,12 +59,9 @@ func detectBump(mr *gl.MergeRequest) bumpType {
 	return bumpUnknown
 }
 
-func isRenovate(mr *gl.MergeRequest) bool {
-	if mr.Author != nil {
-		name := strings.ToLower(mr.Author.Username)
-		if strings.Contains(name, "renovate") {
-			return true
-		}
+func isRenovate(mr *provider.MergeRequest) bool {
+	if strings.Contains(strings.ToLower(mr.Author.Username), "renovate") {
+		return true
 	}
 	if strings.HasPrefix(mr.SourceBranch, "renovate/") {
 		return true
@@ -134,7 +133,7 @@ func renovateListCmd() *cobra.Command {
 			}
 
 			// Group
-			groups := map[bumpType][]*gl.MergeRequest{
+			groups := map[bumpType][]*provider.MergeRequest{
 				bumpMajor: {}, bumpMinor: {}, bumpPatch: {}, bumpUnknown: {},
 			}
 			for _, mr := range mrs {
@@ -154,15 +153,11 @@ func renovateListCmd() *cobra.Command {
 				table.SetBorder(false)
 				table.SetAutoWrapText(false)
 				for _, mr := range subset {
-					pipeline := ""
-					if mr.HeadPipeline != nil {
-						pipeline = mr.HeadPipeline.Status
-					}
 					table.Append([]string{
 						fmt.Sprintf("!%d", mr.IID),
 						truncate(mr.Title, 55),
 						truncate(mr.SourceBranch, 30),
-						pipeline,
+						mr.Pipeline,
 					})
 				}
 				table.Render()
@@ -198,7 +193,7 @@ func renovateApproveCmd() *cobra.Command {
 				project = cfg.DefaultProject
 			}
 			if project == "" {
-				return fmt.Errorf("--project required")
+				return fmt.Errorf("a project is required — set --project or configure a default project in your environment")
 			}
 
 			allowed := parseBumpFilter(bumpFilter)
@@ -207,7 +202,7 @@ func renovateApproveCmd() *cobra.Command {
 				return err
 			}
 
-			var targets []*gl.MergeRequest
+			var targets []*provider.MergeRequest
 			for _, mr := range mrs {
 				b := detectBump(mr)
 				if allowed[b] {
@@ -234,9 +229,7 @@ func renovateApproveCmd() *cobra.Command {
 			for _, mr := range targets {
 				mr := mr
 				pool.GoErr(func() error {
-					_, _, err := glClient.GL.MergeRequestApprovals.ApproveMergeRequest(
-						project, mr.IID, &gl.ApproveMergeRequestOptions{})
-					if err != nil {
+					if err := glClient.Provider.ApproveMergeRequest(context.Background(), project, mr.IID); err != nil {
 						fmt.Fprintf(os.Stderr, "  %s !%d: %v\n", colorErr("✗"), mr.IID, err)
 						failed++
 						return err
@@ -283,7 +276,7 @@ func renovateMergeCmd() *cobra.Command {
 				project = cfg.DefaultProject
 			}
 			if project == "" {
-				return fmt.Errorf("--project required")
+				return fmt.Errorf("a project is required — set --project or configure a default project in your environment")
 			}
 
 			allowed := parseBumpFilter(bumpFilter)
@@ -292,7 +285,7 @@ func renovateMergeCmd() *cobra.Command {
 				return err
 			}
 
-			var targets []*gl.MergeRequest
+			var targets []*provider.MergeRequest
 			for _, mr := range mrs {
 				b := detectBump(mr)
 				if !allowed[b] {
@@ -320,11 +313,8 @@ func renovateMergeCmd() *cobra.Command {
 			for _, mr := range targets {
 				mr := mr
 				pool.GoErr(func() error {
-					_, _, err := glClient.GL.MergeRequests.AcceptMergeRequest(
-						project, mr.IID, &gl.AcceptMergeRequestOptions{
-							ShouldRemoveSourceBranch: gl.Ptr(true),
-						})
-					if err != nil {
+					if _, err := glClient.Provider.MergeMergeRequest(context.Background(), project, mr.IID,
+						provider.MergeOptions{RemoveSourceBranch: true}); err != nil {
 						fmt.Fprintf(os.Stderr, "  %s !%d: %v\n", colorErr("✗"), mr.IID, err)
 						failed++
 						return err
@@ -378,7 +368,7 @@ func renovateStatsCmd() *cobra.Command {
 			for _, mr := range mrs {
 				b := detectBump(mr)
 				counts[b]++
-				if mr.HeadPipeline != nil && mr.HeadPipeline.Status == "success" {
+				if mr.Pipeline == "success" {
 					pipelineOK[b]++
 				}
 			}
@@ -401,35 +391,44 @@ func renovateStatsCmd() *cobra.Command {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-func fetchRenovateMRs(project string, allProjects bool) ([]*gl.MergeRequest, error) {
-	var all []*gl.MergeRequest
+func fetchRenovateMRs(project string, allProjects bool) ([]*provider.MergeRequest, error) {
+	ctx := context.Background()
 
 	if allProjects || project == "" {
+		if glClient.GL == nil {
+			return nil, fmt.Errorf("searching across all projects requires a GitLab provider — set --project to scope to a specific repository")
+		}
+		// GitLab-only global MR list (no Provider equivalent for cross-project MR search).
 		mrs, _, err := glClient.GL.MergeRequests.ListMergeRequests(
 			&gl.ListMergeRequestsOptions{
 				State:       gl.Ptr("opened"),
 				ListOptions: gl.ListOptions{PerPage: 100},
 			})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("could not list open merge requests: %w", err)
 		}
-		all = mrs
-	} else {
-		mrs, _, err := glClient.GL.MergeRequests.ListProjectMergeRequests(project,
-			&gl.ListProjectMergeRequestsOptions{
-				State:       gl.Ptr("opened"),
-				ListOptions: gl.ListOptions{PerPage: 100},
-			})
-		if err != nil {
-			return nil, err
+		var renovate []*provider.MergeRequest
+		for _, mr := range mrs {
+			pm := gitlabMRToProvider(mr)
+			if isRenovate(pm) {
+				renovate = append(renovate, pm)
+			}
 		}
-		all = mrs
+		return renovate, nil
 	}
 
-	var renovate []*gl.MergeRequest
-	for _, mr := range all {
-		if isRenovate(mr) {
-			renovate = append(renovate, mr)
+	mrs, err := glClient.Provider.ListMergeRequests(ctx, project, provider.ListMergeRequestsOptions{
+		State:  "opened",
+		PerPage: 100,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("could not list open merge requests for %s: %w", project, err)
+	}
+
+	var renovate []*provider.MergeRequest
+	for i := range mrs {
+		if isRenovate(&mrs[i]) {
+			renovate = append(renovate, &mrs[i])
 		}
 	}
 	return renovate, nil
@@ -457,4 +456,26 @@ func parseBumpFilter(s string) map[bumpType]bool {
 		}
 	}
 	return m
+}
+
+// gitlabMRToProvider converts a raw go-gitlab MergeRequest to the host-neutral
+// provider.MergeRequest. Used only for the GitLab-only global MR list path.
+func gitlabMRToProvider(mr *gl.MergeRequest) *provider.MergeRequest {
+	out := &provider.MergeRequest{
+		ID:           mr.ID,
+		IID:          mr.IID,
+		Title:        mr.Title,
+		Body:         mr.Description,
+		State:        mr.State,
+		SourceBranch: mr.SourceBranch,
+		TargetBranch: mr.TargetBranch,
+		WebURL:       mr.WebURL,
+	}
+	if mr.HeadPipeline != nil {
+		out.Pipeline = mr.HeadPipeline.Status
+	}
+	if mr.Author != nil {
+		out.Author = provider.User{Username: mr.Author.Username}
+	}
+	return out
 }

@@ -106,16 +106,11 @@ func splitProject(project string) (owner, repo string, err error) {
 
 // ListIssues lists issues for the given owner/repo project.
 // Pull requests returned by the GitHub issues API are filtered out.
+// A milestone title is resolved to its number via ListMilestones first.
 func (g *GitHub) ListIssues(ctx context.Context, project string, opts provider.ListIssuesOptions) ([]provider.Issue, error) {
 	owner, repo, err := splitProject(project)
 	if err != nil {
 		return nil, err
-	}
-
-	// GitHub filters issues by milestone number, not title; resolving a title
-	// is unsupported here (consistent with UpdateIssue's milestone handling).
-	if opts.Milestone != "" {
-		return nil, provider.ErrUnsupported
 	}
 
 	ghOpts := &gh.IssueListByRepoOptions{
@@ -135,6 +130,13 @@ func (g *GitHub) ListIssues(ctx context.Context, project string, opts provider.L
 	}
 	if len(opts.Labels) > 0 {
 		ghOpts.Labels = opts.Labels
+	}
+	if opts.Milestone != "" {
+		num, err := g.milestoneNumberByTitle(ctx, owner, repo, opts.Milestone)
+		if err != nil {
+			return nil, err
+		}
+		ghOpts.Milestone = fmt.Sprintf("%d", num)
 	}
 
 	items, _, err := g.client.Issues.ListByRepo(ctx, owner, repo, ghOpts)
@@ -232,16 +234,12 @@ func (g *GitHub) CreateIssue(ctx context.Context, project string, opts provider.
 }
 
 // UpdateIssue applies a partial update to an existing issue. The neutral
-// State is translated to GitHub's state noun (open/closed). A milestone
-// given by title (without MilestoneID) is unsupported because the GitHub
-// API addresses milestones by number.
+// State is translated to GitHub's state noun (open/closed). A milestone given
+// by title (without MilestoneID) is resolved to its number via ListMilestones.
 func (g *GitHub) UpdateIssue(ctx context.Context, project string, iid int, opts provider.UpdateIssueOptions) (provider.Issue, error) {
 	owner, repo, err := splitProject(project)
 	if err != nil {
 		return provider.Issue{}, err
-	}
-	if opts.Milestone != nil && opts.MilestoneID == nil {
-		return provider.Issue{}, fmt.Errorf("github update issue: milestone by title: %w", provider.ErrUnsupported)
 	}
 
 	req := &gh.IssueRequest{}
@@ -259,6 +257,12 @@ func (g *GitHub) UpdateIssue(ctx context.Context, project string, iid int, opts 
 	}
 	if opts.MilestoneID != nil {
 		req.Milestone = opts.MilestoneID
+	} else if opts.Milestone != nil {
+		num, err := g.milestoneNumberByTitle(ctx, owner, repo, *opts.Milestone)
+		if err != nil {
+			return provider.Issue{}, err
+		}
+		req.Milestone = &num
 	}
 
 	iss, _, err := g.client.Issues.Edit(ctx, owner, repo, iid, req)
@@ -446,17 +450,58 @@ func (g *GitHub) GetMergeRequestDiff(ctx context.Context, project string, iid in
 	return out, nil
 }
 
-// ListMyMergeRequests is unsupported: GitHub has no cross-repo "assigned to me"
-// PR scope on the PullRequests API (it requires the Search API). Use a
-// repo-scoped ListMergeRequests instead.
-func (g *GitHub) ListMyMergeRequests(_ context.Context, _ provider.ListMyMergeRequestsOptions) ([]provider.MergeRequest, error) {
-	return nil, provider.ErrUnsupported
+// ListMyMergeRequests lists pull requests assigned to the authenticated user
+// across all repositories, using the GitHub Search API (issues endpoint with
+// is:pr). Each result's Project is recovered from the issue's Repository field.
+func (g *GitHub) ListMyMergeRequests(ctx context.Context, opts provider.ListMyMergeRequestsOptions) ([]provider.MergeRequest, error) {
+	q := "is:pr assignee:@me"
+	switch opts.State {
+	case "opened", "open":
+		q += " is:open"
+	case "closed":
+		q += " is:closed"
+	case "merged":
+		q += " is:merged"
+	case "all", "":
+		// no state filter
+	default:
+		q += " is:" + opts.State
+	}
+
+	res, _, err := g.client.Search.Issues(ctx, q, &gh.SearchOptions{
+		ListOptions: gh.ListOptions{Page: opts.Page, PerPage: opts.PerPage},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("github list my merge requests: %w", err)
+	}
+
+	result := make([]provider.MergeRequest, 0, len(res.Issues))
+	for _, iss := range res.Issues {
+		if iss == nil || !iss.IsPullRequest() {
+			continue
+		}
+		// Search results carry a PullRequestLinks blob but not the full PR;
+		// the host-neutral MergeRequest is built from the issue-shaped fields.
+		project := iss.GetRepository().GetFullName()
+		result = append(result, issueToPR(project, iss))
+	}
+	return result, nil
 }
 
-// ApproveMergeRequest is unsupported: GitHub approvals are pull-request reviews
-// submitted by another user, not a first-class self-service approve action.
-func (g *GitHub) ApproveMergeRequest(_ context.Context, _ string, _ int) error {
-	return provider.ErrUnsupported
+// ApproveMergeRequest submits an APPROVE review on the pull request. GitHub
+// models approvals as PR reviews, so this creates a review with Event=APPROVE.
+func (g *GitHub) ApproveMergeRequest(ctx context.Context, project string, iid int) error {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return err
+	}
+
+	_, _, err = g.client.PullRequests.CreateReview(ctx, owner, repo, iid,
+		&gh.PullRequestReviewRequest{Event: gh.String("APPROVE")})
+	if err != nil {
+		return fmt.Errorf("github approve pull request: %w", err)
+	}
+	return nil
 }
 
 // MergeMergeRequest merges a pull request. Squash maps to the GitHub "squash"
@@ -540,6 +585,47 @@ func (g *GitHub) ListGroupMilestones(_ context.Context, _ int, _ provider.ListGr
 	return nil, provider.ErrUnsupported
 }
 
+// ListMilestones returns repo-scoped milestones for the given owner/repo project.
+func (g *GitHub) ListMilestones(ctx context.Context, project string, opts provider.ListMilestonesOptions) ([]provider.Milestone, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return nil, err
+	}
+	state := opts.State
+	if state == "" {
+		state = "all"
+	}
+	ghOpts := &gh.MilestoneListOptions{
+		State: state,
+		ListOptions: gh.ListOptions{Page: opts.Page, PerPage: opts.PerPage},
+	}
+	ms, _, err := g.client.Issues.ListMilestones(ctx, owner, repo, ghOpts)
+	if err != nil {
+		return nil, fmt.Errorf("github list milestones for %s: %w", project, err)
+	}
+	result := make([]provider.Milestone, len(ms))
+	for i, m := range ms {
+		result[i] = provider.Milestone{
+			ID:          int(m.GetID()),
+			IID:         m.GetNumber(),
+			Title:       m.GetTitle(),
+			Description: m.GetDescription(),
+			State:       m.GetState(),
+			WebURL:      m.GetHTMLURL(),
+		}
+		if m.DueOn != nil {
+			result[i].DueDate = m.GetDueOn().Format("2006-01-02")
+		}
+	}
+	return result, nil
+}
+
+// ResolveGroup is unsupported on GitHub — orgs have numeric IDs but the
+// GitHub adapter does not implement group-epic/group-milestone surfaces.
+func (g *GitHub) ResolveGroup(_ context.Context, _ string) (int, error) {
+	return 0, provider.ErrUnsupported
+}
+
 // ListGroupEpics is unsupported on GitHub (no first-class epic concept).
 func (g *GitHub) ListGroupEpics(_ context.Context, _ int, _ provider.ListGroupEpicsOptions) ([]provider.Epic, error) {
 	return nil, provider.ErrUnsupported
@@ -551,6 +637,63 @@ func (g *GitHub) LinkIssueToEpic(_ context.Context, _, _, _ int) error {
 }
 
 // ─── conversion helpers ───────────────────────────────────────────────────────
+
+// milestoneNumberByTitle resolves a milestone title to its GitHub number.
+// GitHub's issues API filters by milestone number, not title, so callers
+// that receive a neutral title must resolve it first.
+func (g *GitHub) milestoneNumberByTitle(ctx context.Context, owner, repo, title string) (int, error) {
+	milestones, _, err := g.client.Issues.ListMilestones(ctx, owner, repo, &gh.MilestoneListOptions{
+		State: "all",
+		ListOptions: gh.ListOptions{PerPage: 100},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("github resolve milestone %q: %w", title, err)
+	}
+	for _, m := range milestones {
+		if m.GetTitle() == title {
+			return m.GetNumber(), nil
+		}
+	}
+	return 0, fmt.Errorf("github milestone %q not found in %s/%s", title, owner, repo)
+}
+
+// issueToPR builds a host-neutral MergeRequest from a GitHub Issue returned
+// by the Search API. Search results carry issue-shaped fields plus a
+// PullRequestLinks blob; the branch names are not available in search results
+// and are left empty.
+func issueToPR(project string, iss *gh.Issue) provider.MergeRequest {
+	out := provider.MergeRequest{
+		ID:      int(iss.GetID()),
+		IID:     iss.GetNumber(),
+		Project: project,
+		Title:   iss.GetTitle(),
+		Body:    iss.GetBody(),
+		State:   iss.GetState(),
+		WebURL:  iss.GetHTMLURL(),
+	}
+
+	if iss.User != nil {
+		out.Author = toUser(iss.User)
+	}
+	for _, a := range iss.Assignees {
+		if a != nil {
+			out.Assignees = append(out.Assignees, toUser(a))
+		}
+	}
+	for _, l := range iss.Labels {
+		if l != nil {
+			out.Labels = append(out.Labels, l.GetName())
+		}
+	}
+
+	out.CreatedAt = derefTime(iss.CreatedAt)
+	out.UpdatedAt = derefTime(iss.UpdatedAt)
+	if iss.ClosedAt != nil {
+		t := iss.ClosedAt.Time
+		out.ClosedAt = &t
+	}
+	return out
+}
 
 // toIssue converts a GitHub issue to the host-neutral provider.Issue.
 func toIssue(project string, iss *gh.Issue) provider.Issue {

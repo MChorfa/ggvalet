@@ -19,6 +19,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -27,12 +28,12 @@ import (
 	"time"
 
 	"github.com/MChorfa/ggvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
-	gl "github.com/xanzy/go-gitlab"
 )
 
 // ─── Colour palette (CKODEX-DS-1) ────────────────────────────────────────────
@@ -75,7 +76,7 @@ var tuiTabNames = []string{"Issues", "Epics", "Milestones", "Journal"}
 
 // ─── List items ──────────────────────────────────────────────────────────────
 
-type issItem struct{ v *gl.Issue }
+type issItem struct{ v *provider.Issue }
 
 func (i issItem) Title() string {
 	if i.v.State == "closed" {
@@ -85,11 +86,11 @@ func (i issItem) Title() string {
 }
 func (i issItem) Description() string {
 	var parts []string
-	if i.v.Assignee != nil {
-		parts = append(parts, "@"+i.v.Assignee.Username)
+	if len(i.v.Assignees) > 0 {
+		parts = append(parts, "@"+i.v.Assignees[0].Username)
 	}
-	if i.v.Milestone != nil {
-		parts = append(parts, "⬡ "+i.v.Milestone.Title)
+	if i.v.Milestone != "" {
+		parts = append(parts, "⬡ "+i.v.Milestone)
 	}
 	if len(i.v.Labels) > 0 {
 		parts = append(parts, strings.Join(i.v.Labels, " · "))
@@ -103,7 +104,7 @@ func (i issItem) FilterValue() string {
 	return fmt.Sprintf("%d %s %s", i.v.IID, i.v.Title, strings.Join(i.v.Labels, " "))
 }
 
-type epItem struct{ v *gl.Epic }
+type epItem struct{ v *provider.Epic }
 
 func (e epItem) Title() string {
 	if e.v.State == "closed" {
@@ -116,12 +117,12 @@ func (e epItem) Description() string {
 }
 func (e epItem) FilterValue() string { return e.v.Title }
 
-type msItem struct{ v *gl.Milestone }
+type msItem struct{ v *provider.Milestone }
 
 func (m msItem) Title() string {
 	due := ""
-	if m.v.DueDate != nil {
-		due = "  due:" + m.v.DueDate.String()
+	if m.v.DueDate != "" {
+		due = "  due:" + m.v.DueDate
 	}
 	return fmt.Sprintf("⬡ %s%s", m.v.Title, due)
 }
@@ -150,9 +151,9 @@ func (j jItem) FilterValue() string { return j.title + " " + j.entity + " " + j.
 // ─── Messages ─────────────────────────────────────────────────────────────────
 
 type (
-	tuiIssuesMsg     []*gl.Issue
-	tuiEpicsMsg      []*gl.Epic
-	tuiMilestonesMsg []*gl.Milestone
+	tuiIssuesMsg     []provider.Issue
+	tuiEpicsMsg      []provider.Epic
+	tuiMilestonesMsg []provider.Milestone
 	tuiJournalMsg    []jItem
 	tuiErrMsg        struct {
 		tab tuiTab
@@ -176,9 +177,9 @@ type tuiModel struct {
 	group   string
 
 	loaded     [tCount]bool
-	issues     []*gl.Issue
-	epics      []*gl.Epic
-	milestones []*gl.Milestone
+	issues     []provider.Issue
+	epics      []provider.Epic
+	milestones []provider.Milestone
 }
 
 func newTUI(host, project, group string) tuiModel {
@@ -213,33 +214,34 @@ func (m tuiModel) loadCmd(t tuiTab) tea.Cmd {
 	switch t {
 	case tIssues:
 		return func() tea.Msg {
+			ctx := context.Background()
 			proj := m.project
 			if proj == "" {
 				proj = cfg.DefaultProject
 			}
-			var issues []*gl.Issue
-			var err error
 			if proj != "" {
-				issues, _, err = glClient.GL.Issues.ListProjectIssues(proj,
-					&gl.ListProjectIssuesOptions{
-						State:       gl.Ptr("opened"),
-						ListOptions: gl.ListOptions{PerPage: 50},
-					})
-			} else {
-				issues, _, err = glClient.GL.Issues.ListIssues(&gl.ListIssuesOptions{
-					Scope:       gl.Ptr("assigned_to_me"),
-					State:       gl.Ptr("opened"),
-					ListOptions: gl.ListOptions{PerPage: 50},
+				issues, err := glClient.Provider.ListIssues(ctx, proj, provider.ListIssuesOptions{
+					State:   "opened",
+					PerPage: 50,
 				})
+				if err != nil {
+					return tuiErrMsg{t, fmt.Errorf("could not list issues in %s: %w", proj, err)}
+				}
+				return tuiIssuesMsg(issues)
 			}
+			issues, err := glClient.Provider.ListMyIssues(ctx, provider.ListMyIssuesOptions{
+				State:   "opened",
+				PerPage: 50,
+			})
 			if err != nil {
-				return tuiErrMsg{t, err}
+				return tuiErrMsg{t, fmt.Errorf("could not list your issues: %w", err)}
 			}
 			return tuiIssuesMsg(issues)
 		}
 
 	case tEpics:
 		return func() tea.Msg {
+			ctx := context.Background()
 			g := m.group
 			if g == "" {
 				g = cfg.DefaultGroup
@@ -247,19 +249,29 @@ func (m tuiModel) loadCmd(t tuiTab) tea.Cmd {
 			if g == "" {
 				return tuiEpicsMsg(nil)
 			}
-			epics, _, err := glClient.GL.Epics.ListGroupEpics(g,
-				&gl.ListGroupEpicsOptions{
-					State:       gl.Ptr("opened"),
-					ListOptions: gl.ListOptions{PerPage: 50},
-				})
+			groupID, err := glClient.Provider.ResolveGroup(ctx, g)
 			if err != nil {
-				return tuiErrMsg{t, err}
+				if isUnsupported(err) {
+					return tuiEpicsMsg(nil)
+				}
+				return tuiErrMsg{t, fmt.Errorf("could not resolve group %q: %w", g, err)}
+			}
+			epics, err := glClient.Provider.ListGroupEpics(ctx, groupID, provider.ListGroupEpicsOptions{
+				State:   "opened",
+				PerPage: 50,
+			})
+			if err != nil {
+				if isUnsupported(err) {
+					return tuiEpicsMsg(nil)
+				}
+				return tuiErrMsg{t, fmt.Errorf("could not list epics in %s: %w", g, err)}
 			}
 			return tuiEpicsMsg(epics)
 		}
 
 	case tMilestones:
 		return func() tea.Msg {
+			ctx := context.Background()
 			proj := m.project
 			if proj == "" {
 				proj = cfg.DefaultProject
@@ -267,13 +279,15 @@ func (m tuiModel) loadCmd(t tuiTab) tea.Cmd {
 			if proj == "" {
 				return tuiMilestonesMsg(nil)
 			}
-			ms, _, err := glClient.GL.Milestones.ListMilestones(proj,
-				&gl.ListMilestonesOptions{
-					State:       gl.Ptr("active"),
-					ListOptions: gl.ListOptions{PerPage: 50},
-				})
+			ms, err := glClient.Provider.ListMilestones(ctx, proj, provider.ListMilestonesOptions{
+				State:   "active",
+				PerPage: 50,
+			})
 			if err != nil {
-				return tuiErrMsg{t, err}
+				if isUnsupported(err) {
+					return tuiMilestonesMsg(nil)
+				}
+				return tuiErrMsg{t, fmt.Errorf("could not list milestones in %s: %w", proj, err)}
 			}
 			return tuiMilestonesMsg(ms)
 		}
@@ -287,7 +301,7 @@ func (m tuiModel) loadCmd(t tuiTab) tea.Cmd {
 			}
 			entries, err := glClient.Journal.Query(f)
 			if err != nil {
-				return tuiErrMsg{t, err}
+				return tuiErrMsg{t, fmt.Errorf("could not read journal: %w", err)}
 			}
 			items := make([]jItem, 0, len(entries))
 			for _, e := range entries {
@@ -320,34 +334,34 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tuiIssuesMsg:
-		m.issues = []*gl.Issue(msg)
+		m.issues = []provider.Issue(msg)
 		m.loaded[tIssues] = true
 		m.loading = false
 		items := make([]list.Item, len(m.issues))
-		for i, v := range m.issues {
-			items[i] = issItem{v}
+		for i := range m.issues {
+			items[i] = issItem{&m.issues[i]}
 		}
 		m.list.SetItems(items)
 		m.refreshDetail()
 
 	case tuiEpicsMsg:
-		m.epics = []*gl.Epic(msg)
+		m.epics = []provider.Epic(msg)
 		m.loaded[tEpics] = true
 		m.loading = false
 		items := make([]list.Item, len(m.epics))
-		for i, v := range m.epics {
-			items[i] = epItem{v}
+		for i := range m.epics {
+			items[i] = epItem{&m.epics[i]}
 		}
 		m.list.SetItems(items)
 		m.refreshDetail()
 
 	case tuiMilestonesMsg:
-		m.milestones = []*gl.Milestone(msg)
+		m.milestones = []provider.Milestone(msg)
 		m.loaded[tMilestones] = true
 		m.loading = false
 		items := make([]list.Item, len(m.milestones))
-		for i, v := range m.milestones {
-			items[i] = msItem{v}
+		for i := range m.milestones {
+			items[i] = msItem{&m.milestones[i]}
 		}
 		m.list.SetItems(items)
 		m.refreshDetail()
@@ -503,15 +517,15 @@ func (m *tuiModel) refreshDetail() {
 	switch m.tab {
 	case tIssues:
 		if idx >= 0 && idx < len(m.issues) {
-			content = tuiIssueDetail(m.issues[idx])
+			content = tuiIssueDetail(&m.issues[idx])
 		}
 	case tEpics:
 		if idx >= 0 && idx < len(m.epics) {
-			content = tuiEpicDetail(m.epics[idx])
+			content = tuiEpicDetail(&m.epics[idx])
 		}
 	case tMilestones:
 		if idx >= 0 && idx < len(m.milestones) {
-			content = tuiMSDetail(m.milestones[idx])
+			content = tuiMSDetail(&m.milestones[idx])
 		}
 	case tJournal:
 		content = lipgloss.NewStyle().Foreground(tuiDim).
@@ -530,7 +544,7 @@ func sep() string {
 	return lipgloss.NewStyle().Foreground(tuiDim).Render(strings.Repeat("─", 38)) + "\n\n"
 }
 
-func tuiIssueDetail(iss *gl.Issue) string {
+func tuiIssueDetail(iss *provider.Issue) string {
 	var b strings.Builder
 	b.WriteString(tuiDetailTitle.Render(fmt.Sprintf("#%d %s", iss.IID, iss.Title)) + "\n\n")
 	stateStr := lipgloss.NewStyle().Foreground(tuiGreen).Render("● " + iss.State)
@@ -538,20 +552,20 @@ func tuiIssueDetail(iss *gl.Issue) string {
 		stateStr = lipgloss.NewStyle().Foreground(tuiDim).Render("✓ " + iss.State)
 	}
 	b.WriteString(kv("State", stateStr))
-	if iss.Assignee != nil {
-		b.WriteString(kv("Assignee", "@"+iss.Assignee.Username))
+	if len(iss.Assignees) > 0 {
+		b.WriteString(kv("Assignee", "@"+iss.Assignees[0].Username))
 	}
-	if iss.Milestone != nil {
-		b.WriteString(kv("Milestone", iss.Milestone.Title))
+	if iss.Milestone != "" {
+		b.WriteString(kv("Milestone", iss.Milestone))
 	}
 	if len(iss.Labels) > 0 {
 		b.WriteString(kv("Labels", strings.Join(iss.Labels, " · ")))
 	}
 	b.WriteString(kv("Created", iss.CreatedAt.Format("2006-01-02 15:04")))
 	b.WriteString(kv("URL", iss.WebURL))
-	if iss.Description != "" {
+	if iss.Body != "" {
 		b.WriteString("\n" + sep())
-		desc := iss.Description
+		desc := iss.Body
 		if len(desc) > 700 {
 			desc = desc[:700] + "\n…"
 		}
@@ -560,31 +574,31 @@ func tuiIssueDetail(iss *gl.Issue) string {
 	return b.String()
 }
 
-func tuiEpicDetail(ep *gl.Epic) string {
+func tuiEpicDetail(ep *provider.Epic) string {
 	var b strings.Builder
 	b.WriteString(tuiDetailTitle.Render(fmt.Sprintf("&%d %s", ep.IID, ep.Title)) + "\n\n")
 	b.WriteString(kv("State", ep.State))
 	b.WriteString(kv("Author", "@"+ep.Author.Username))
-	if ep.StartDate != nil {
-		b.WriteString(kv("Start", ep.StartDate.String()))
+	if ep.StartDate != "" {
+		b.WriteString(kv("Start", ep.StartDate))
 	}
-	if ep.DueDate != nil {
-		b.WriteString(kv("Due", ep.DueDate.String()))
+	if ep.DueDate != "" {
+		b.WriteString(kv("Due", ep.DueDate))
 	}
 	b.WriteString(kv("Progress", "(stats unavailable)"))
 	b.WriteString(kv("URL", ep.WebURL))
 	return b.String()
 }
 
-func tuiMSDetail(ms *gl.Milestone) string {
+func tuiMSDetail(ms *provider.Milestone) string {
 	var b strings.Builder
 	b.WriteString(tuiDetailTitle.Render(ms.Title) + "\n\n")
 	b.WriteString(kv("State", ms.State))
-	if ms.StartDate != nil {
-		b.WriteString(kv("Start", ms.StartDate.String()))
+	if ms.StartDate != "" {
+		b.WriteString(kv("Start", ms.StartDate))
 	}
-	if ms.DueDate != nil {
-		b.WriteString(kv("Due", ms.DueDate.String()))
+	if ms.DueDate != "" {
+		b.WriteString(kv("Due", ms.DueDate))
 	}
 	b.WriteString(kv("Statistics", "(unavailable)"))
 	b.WriteString(kv("URL", ms.WebURL))

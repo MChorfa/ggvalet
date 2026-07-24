@@ -155,6 +155,14 @@ func (t *testProvider) ListGroupEpics(ctx context.Context, groupID int, opts pro
 	return t.epics, nil
 }
 
+func (t *testProvider) ListMilestones(_ context.Context, _ string, _ provider.ListMilestonesOptions) ([]provider.Milestone, error) {
+	return nil, provider.ErrUnsupported
+}
+
+func (t *testProvider) ResolveGroup(_ context.Context, _ string) (int, error) {
+	return 0, provider.ErrUnsupported
+}
+
 // ─── diff tests ──────────────────────────────────────────────────────────────
 
 func TestPlanDiff_Matched_WhenHashFoundInRemote(t *testing.T) {

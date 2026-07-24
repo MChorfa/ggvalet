@@ -455,6 +455,39 @@ func (g *GitLab) CreateGroupEpic(ctx context.Context, groupID int, opts provider
 	return toEpic(groupID, e), nil
 }
 
+// ListMilestones returns project-scoped milestones for the given project.
+func (g *GitLab) ListMilestones(ctx context.Context, project string, opts provider.ListMilestonesOptions) ([]provider.Milestone, error) {
+	glOpts := &gl.ListMilestonesOptions{
+		ListOptions: gl.ListOptions{Page: opts.Page, PerPage: opts.PerPage},
+	}
+	if opts.State != "" {
+		glOpts.State = gl.Ptr(opts.State)
+	}
+	if opts.Search != "" {
+		glOpts.Search = gl.Ptr(opts.Search)
+	}
+
+	ms, _, err := g.client.Milestones.ListMilestones(project, glOpts, gl.WithContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("gitlab list project milestones: %w", err)
+	}
+
+	result := make([]provider.Milestone, len(ms))
+	for i, m := range ms {
+		result[i] = toProjectMilestone(m)
+	}
+	return result, nil
+}
+
+// ResolveGroup resolves a group path (e.g. "my-org/sub-group") to its numeric ID.
+func (g *GitLab) ResolveGroup(ctx context.Context, groupPath string) (int, error) {
+	grp, _, err := g.client.Groups.GetGroup(groupPath, nil, gl.WithContext(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("gitlab resolve group %q: %w", groupPath, err)
+	}
+	return grp.ID, nil
+}
+
 // ListGroupMilestones returns milestones for the given group.
 func (g *GitLab) ListGroupMilestones(ctx context.Context, groupID int, opts provider.ListGroupMilestonesOptions) ([]provider.Milestone, error) {
 	glOpts := &gl.ListGroupMilestonesOptions{
@@ -693,15 +726,34 @@ func toMilestone(groupID int, m *gl.GroupMilestone) provider.Milestone {
 	}
 }
 
+func toProjectMilestone(m *gl.Milestone) provider.Milestone {
+	return provider.Milestone{
+		ID:          m.ID,
+		IID:         m.IID,
+		Title:       m.Title,
+		Description: m.Description,
+		State:       m.State,
+		StartDate:   isoTimeString(m.StartDate),
+		DueDate:     isoTimeString(m.DueDate),
+		WebURL:      m.WebURL,
+	}
+}
+
 func toEpic(groupID int, e *gl.Epic) provider.Epic {
-	return provider.Epic{
+	out := provider.Epic{
 		ID:          e.ID,
 		IID:         e.IID,
 		Title:       e.Title,
 		Description: e.Description,
 		State:       e.State,
 		Labels:      []string(e.Labels),
+		StartDate:   isoTimeString(e.StartDate),
+		DueDate:     isoTimeString(e.DueDate),
 		WebURL:      e.WebURL,
 		GroupID:     groupID,
 	}
+	if e.Author != nil {
+		out.Author = provider.User{ID: e.Author.ID, Username: e.Author.Username, Name: e.Author.Name, WebURL: e.Author.WebURL}
+	}
+	return out
 }

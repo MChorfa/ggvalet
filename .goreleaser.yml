@@ -1,6 +1,13 @@
 version: 2
 project_name: ggvalet
 
+# Pin the SCM to GitHub. Without this, a GITLAB_TOKEN leaked into the
+# environment makes GoReleaser auto-detect GitLab and 401 against
+# gitlab.com on publish. Declaring GITHUB_TOKEN here fails fast if the
+# token is missing and prevents the GitLab token from being picked up.
+env:
+  - GITHUB_TOKEN={{ .Env.GITHUB_TOKEN }}
+
 before:
   hooks:
     - go mod tidy

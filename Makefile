@@ -6,7 +6,7 @@ DIST := dist
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.0.0-dev")
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
 
-.PHONY: all build install test cover cover-p19 vwp govulncheck regression fmt vet clean tidy cross checksums sbom release release-dry goreleaser-check site attest-sign
+.PHONY: all build install test cover cover-p19 vwp govulncheck regression fmt vet clean tidy cross checksums sbom release release-dry release-publish goreleaser-check site attest-sign
 
 all: tidy fmt vet build
 
@@ -111,8 +111,19 @@ goreleaser-check:
 	goreleaser check --config .goreleaser.yml
 
 # Dry-run GoReleaser release (snapshot, no publish, no sign) for local testing.
+# Unsets GITLAB_TOKEN so GoReleaser doesn't auto-detect GitLab and 401.
+# GITHUB_TOKEN is read from env or `gh auth token` as a fallback.
 release-dry:
-	goreleaser release --clean --snapshot --skip=sign --config .goreleaser.yml
+	env -u GITLAB_TOKEN GITHUB_TOKEN="$${GITHUB_TOKEN:-$$(gh auth token)}" \
+		goreleaser release --clean --snapshot --skip=sign --config .goreleaser.yml
+
+# Publish a real release to GitHub Releases via GoReleaser. Requires a git
+# tag (e.g. v0.3.0) already pushed to origin. Unsets GITLAB_TOKEN so
+# GoReleaser pins to GitHub; GITHUB_TOKEN is read from env or `gh auth token`.
+# Add --skip=sign to skip cosign signing (e.g. no keyless OIDC locally).
+release-publish:
+	env -u GITLAB_TOKEN GITHUB_TOKEN="$${GITHUB_TOKEN:-$$(gh auth token)}" \
+		goreleaser release --clean --config .goreleaser.yml
 
 # Build the static documentation site for local preview.
 site:

@@ -3,11 +3,16 @@
 package gitlab
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,8 +23,11 @@ import (
 
 // GitLab is the provider.Provider implementation for GitLab instances.
 type GitLab struct {
-	client *gl.Client
-	host   string
+	client     *gl.Client
+	httpClient *http.Client
+	token      string
+	baseURL    string
+	host       string
 }
 
 // New returns a provider bound to cfg.GitLabURL/cfg.Token.
@@ -46,7 +54,7 @@ func New(cfg *config.Config) (*GitLab, error) {
 		host = u.Host
 	}
 
-	return &GitLab{client: glc, host: host}, nil
+	return &GitLab{client: glc, httpClient: httpClient, token: cfg.Token, baseURL: cfg.GitLabURL, host: host}, nil
 }
 
 // Kind returns provider.KindGitLab.
@@ -224,6 +232,157 @@ func (g *GitLab) ListUsers(ctx context.Context, opts provider.ListUsersOptions) 
 		}
 	}
 	return result, nil
+}
+
+// GetProject fetches project metadata via the GitLab projects API.
+func (g *GitLab) GetProject(ctx context.Context, project string) (provider.Project, error) {
+	p, _, err := g.client.Projects.GetProject(project, &gl.GetProjectOptions{}, gl.WithContext(ctx))
+	if err != nil {
+		return provider.Project{}, fmt.Errorf("gitlab get project: %w", err)
+	}
+	return provider.Project{
+		ID:              p.ID,
+		Name:            p.Name,
+		Path:            p.PathWithNamespace,
+		FullName:        p.NameWithNamespace,
+		Description:     p.Description,
+		WebURL:          p.WebURL,
+		DefaultBranch:   p.DefaultBranch,
+		OpenIssuesCount: p.OpenIssuesCount,
+		Archived:        p.Archived,
+	}, nil
+}
+
+// ListWorkItems calls the GitLab work items REST endpoint.
+// Requires GitLab 15.1+ with work_items feature flag enabled.
+func (g *GitLab) ListWorkItems(ctx context.Context, project string, opts provider.ListWorkItemsOptions) ([]provider.WorkItem, error) {
+	u := fmt.Sprintf("%s/api/v4/projects/%s/work_items?state=%s&per_page=%d",
+		g.baseURL, url.PathEscape(project), opts.State, orDefault(opts.PerPage, 50))
+	if opts.Page > 0 {
+		u += fmt.Sprintf("&page=%d", opts.Page)
+	}
+	if opts.Type != "" {
+		u += "&work_item_type_name=" + opts.Type
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("gitlab list work items: %w", err)
+	}
+	g.addToken(req)
+	resp, err := g.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("gitlab list work items: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("gitlab list work items: %d %s", resp.StatusCode, string(body))
+	}
+
+	var items []struct {
+		ID    int    `json:"id"`
+		IID   int    `json:"iid"`
+		Title string `json:"title"`
+		State string `json:"state"`
+		Type  struct {
+			Name string `json:"name"`
+		} `json:"work_item_type"`
+		WebURL string `json:"web_url"`
+	}
+	if err := json.Unmarshal(body, &items); err != nil {
+		return nil, fmt.Errorf("gitlab list work items: parse: %w", err)
+	}
+	out := make([]provider.WorkItem, len(items))
+	for i, wi := range items {
+		out[i] = provider.WorkItem{
+			ID:     wi.ID,
+			IID:    wi.IID,
+			Title:  wi.Title,
+			State:  wi.State,
+			Type:   wi.Type.Name,
+			WebURL: wi.WebURL,
+		}
+	}
+	return out, nil
+}
+
+// CreateWorkItem creates a work item via the GitLab REST endpoint.
+func (g *GitLab) CreateWorkItem(ctx context.Context, project string, opts provider.CreateWorkItemOptions) (provider.WorkItem, error) {
+	typeName := opts.Type
+	if typeName == "" {
+		typeName = "TASK"
+	}
+	payload := map[string]any{
+		"title":               opts.Title,
+		"work_item_type_name": typeName,
+	}
+	data, _ := json.Marshal(payload)
+	u := fmt.Sprintf("%s/api/v4/projects/%s/work_items",
+		g.baseURL, url.PathEscape(project))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(data))
+	if err != nil {
+		return provider.WorkItem{}, fmt.Errorf("gitlab create work item: %w", err)
+	}
+	g.addToken(req)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := g.httpClient.Do(req)
+	if err != nil {
+		return provider.WorkItem{}, fmt.Errorf("gitlab create work item: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return provider.WorkItem{}, fmt.Errorf("gitlab create work item: %d %s", resp.StatusCode, string(body))
+	}
+
+	var wi struct {
+		IID    int    `json:"iid"`
+		Title  string `json:"title"`
+		WebURL string `json:"web_url"`
+	}
+	if err := json.Unmarshal(body, &wi); err != nil {
+		return provider.WorkItem{}, fmt.Errorf("gitlab create work item: parse: %w", err)
+	}
+	return provider.WorkItem{IID: wi.IID, Title: wi.Title, WebURL: wi.WebURL, Type: typeName}, nil
+}
+
+// CloseWorkItem closes a work item via the GitLab REST endpoint.
+func (g *GitLab) CloseWorkItem(ctx context.Context, project string, id int) error {
+	payload := map[string]any{"state_event": "close"}
+	data, _ := json.Marshal(payload)
+	u := fmt.Sprintf("%s/api/v4/projects/%s/work_items/%d",
+		g.baseURL, url.PathEscape(project), id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("gitlab close work item: %w", err)
+	}
+	g.addToken(req)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := g.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("gitlab close work item: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("gitlab close work item: %d %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+// addToken sets the PRIVATE-TOKEN header from the GitLab client's token.
+func (g *GitLab) addToken(req *http.Request) {
+	if tok := g.token; tok != "" {
+		req.Header.Set("PRIVATE-TOKEN", tok)
+	}
+}
+
+func orDefault(n, def int) int {
+	if n > 0 {
+		return n
+	}
+	return def
 }
 
 // ListMergeRequests calls the GitLab list project merge requests API.
@@ -479,6 +638,15 @@ func (g *GitLab) ListMilestones(ctx context.Context, project string, opts provid
 	return result, nil
 }
 
+// GetMilestone returns a single project-scoped milestone by ID.
+func (g *GitLab) GetMilestone(ctx context.Context, project string, id int) (provider.Milestone, error) {
+	m, _, err := g.client.Milestones.GetMilestone(project, id, gl.WithContext(ctx))
+	if err != nil {
+		return provider.Milestone{}, fmt.Errorf("gitlab get milestone: %w", err)
+	}
+	return toProjectMilestone(m), nil
+}
+
 // ResolveGroup resolves a group path (e.g. "my-org/sub-group") to its numeric ID.
 func (g *GitLab) ResolveGroup(ctx context.Context, groupPath string) (int, error) {
 	grp, _, err := g.client.Groups.GetGroup(groupPath, nil, gl.WithContext(ctx))
@@ -565,6 +733,314 @@ func (g *GitLab) LinkIssueToEpic(ctx context.Context, groupID, epicIID, issueID 
 		return fmt.Errorf("gitlab link issue to epic: %w", err)
 	}
 	return nil
+}
+
+// UpdateGroupEpic updates an existing epic in the given group.
+func (g *GitLab) UpdateGroupEpic(ctx context.Context, groupID int, epicIID int, opts provider.UpdateEpicOptions) (provider.Epic, error) {
+	glOpts := &gl.UpdateEpicOptions{}
+	if opts.Title != nil {
+		glOpts.Title = gl.Ptr(*opts.Title)
+	}
+	if opts.Description != nil {
+		glOpts.Description = gl.Ptr(*opts.Description)
+	}
+	if opts.State != nil {
+		glOpts.StateEvent = gl.Ptr(*opts.State) // "close" | "reopen"
+	}
+
+	e, _, err := g.client.Epics.UpdateEpic(groupID, epicIID, glOpts, gl.WithContext(ctx))
+	if err != nil {
+		return provider.Epic{}, fmt.Errorf("gitlab update epic: %w", err)
+	}
+	return toEpic(groupID, e), nil
+}
+
+// ListEpicIssues lists issues linked to a group epic.
+func (g *GitLab) ListEpicIssues(ctx context.Context, groupID int, epicIID int) ([]provider.Issue, error) {
+	page := 1
+	var result []provider.Issue
+	for {
+		issues, resp, err := g.client.EpicIssues.ListEpicIssues(groupID, epicIID,
+			&gl.ListOptions{Page: page, PerPage: 100}, gl.WithContext(ctx))
+		if err != nil {
+			return nil, fmt.Errorf("gitlab list epic issues: %w", err)
+		}
+		for _, iss := range issues {
+			proj := ""
+			if iss.References != nil {
+				proj = strings.Split(iss.References.Full, "#")[0]
+			}
+			result = append(result, toIssue(proj, iss))
+		}
+		if resp.CurrentPage >= resp.TotalPages {
+			break
+		}
+		page++
+	}
+	return result, nil
+}
+
+// CreateMilestone creates a new project-scoped milestone.
+func (g *GitLab) CreateMilestone(ctx context.Context, project string, opts provider.CreateMilestoneOptions) (provider.Milestone, error) {
+	glOpts := &gl.CreateMilestoneOptions{
+		Title: gl.Ptr(opts.Title),
+	}
+	if opts.Description != "" {
+		glOpts.Description = gl.Ptr(opts.Description)
+	}
+	if opts.StartDate != "" {
+		t, err := time.Parse("2006-01-02", opts.StartDate)
+		if err != nil {
+			return provider.Milestone{}, fmt.Errorf("gitlab create milestone: invalid start date: %w", err)
+		}
+		iso := gl.ISOTime(t)
+		glOpts.StartDate = &iso
+	}
+	if opts.DueDate != "" {
+		t, err := time.Parse("2006-01-02", opts.DueDate)
+		if err != nil {
+			return provider.Milestone{}, fmt.Errorf("gitlab create milestone: invalid due date: %w", err)
+		}
+		iso := gl.ISOTime(t)
+		glOpts.DueDate = &iso
+	}
+
+	m, _, err := g.client.Milestones.CreateMilestone(project, glOpts, gl.WithContext(ctx))
+	if err != nil {
+		return provider.Milestone{}, fmt.Errorf("gitlab create milestone: %w", err)
+	}
+	return toProjectMilestone(m), nil
+}
+
+// UpdateMilestone updates an existing project-scoped milestone.
+func (g *GitLab) UpdateMilestone(ctx context.Context, project string, id int, opts provider.UpdateMilestoneOptions) (provider.Milestone, error) {
+	glOpts := &gl.UpdateMilestoneOptions{}
+	if opts.Title != nil {
+		glOpts.Title = gl.Ptr(*opts.Title)
+	}
+	if opts.Description != nil {
+		glOpts.Description = gl.Ptr(*opts.Description)
+	}
+	if opts.State != nil {
+		glOpts.StateEvent = gl.Ptr(*opts.State) // "close" | "activate"
+	}
+
+	m, _, err := g.client.Milestones.UpdateMilestone(project, id, glOpts, gl.WithContext(ctx))
+	if err != nil {
+		return provider.Milestone{}, fmt.Errorf("gitlab update milestone: %w", err)
+	}
+	return toProjectMilestone(m), nil
+}
+
+// ─── CI/CD pipeline surface ───────────────────────────────────────────────────
+
+// ListPipelines returns CI/CD pipelines for the given project.
+func (g *GitLab) ListPipelines(ctx context.Context, project string, opts provider.ListPipelinesOptions) ([]provider.Pipeline, error) {
+	glOpts := &gl.ListProjectPipelinesOptions{
+		ListOptions: gl.ListOptions{Page: opts.Page, PerPage: opts.PerPage},
+	}
+	if opts.Status != "" && opts.Status != "all" {
+		st := gl.BuildStateValue(opts.Status)
+		glOpts.Status = &st
+	}
+	if opts.Ref != "" {
+		glOpts.Ref = gl.Ptr(opts.Ref)
+	}
+	if opts.SHA != "" {
+		glOpts.SHA = gl.Ptr(opts.SHA)
+	}
+
+	pipes, _, err := g.client.Pipelines.ListProjectPipelines(project, glOpts, gl.WithContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("gitlab list pipelines: %w", err)
+	}
+
+	result := make([]provider.Pipeline, len(pipes))
+	for i, p := range pipes {
+		result[i] = toPipelineInfo(project, p)
+	}
+	return result, nil
+}
+
+// GetPipeline returns a single CI/CD pipeline.
+func (g *GitLab) GetPipeline(ctx context.Context, project string, id int) (provider.Pipeline, error) {
+	p, _, err := g.client.Pipelines.GetPipeline(project, id, gl.WithContext(ctx))
+	if err != nil {
+		return provider.Pipeline{}, fmt.Errorf("gitlab get pipeline: %w", err)
+	}
+	return toPipeline(project, p), nil
+}
+
+// RunPipeline triggers a new CI/CD pipeline.
+func (g *GitLab) RunPipeline(ctx context.Context, project string, opts provider.RunPipelineOptions) (provider.Pipeline, error) {
+	glOpts := &gl.CreatePipelineOptions{
+		Ref: gl.Ptr(opts.Ref),
+	}
+	if len(opts.Variables) > 0 {
+		vars := make([]*gl.PipelineVariableOptions, 0, len(opts.Variables))
+		for k, v := range opts.Variables {
+			vars = append(vars, &gl.PipelineVariableOptions{
+				Key:          gl.Ptr(k),
+				Value:        gl.Ptr(v),
+				VariableType: gl.Ptr(gl.VariableTypeValue("env_var")),
+			})
+		}
+		glOpts.Variables = &vars
+	}
+
+	p, _, err := g.client.Pipelines.CreatePipeline(project, glOpts, gl.WithContext(ctx))
+	if err != nil {
+		return provider.Pipeline{}, fmt.Errorf("gitlab run pipeline: %w", err)
+	}
+	return toPipeline(project, p), nil
+}
+
+// RetryPipeline retries a failed pipeline.
+func (g *GitLab) RetryPipeline(ctx context.Context, project string, id int) (provider.Pipeline, error) {
+	p, _, err := g.client.Pipelines.RetryPipelineBuild(project, id, gl.WithContext(ctx))
+	if err != nil {
+		return provider.Pipeline{}, fmt.Errorf("gitlab retry pipeline: %w", err)
+	}
+	return toPipeline(project, p), nil
+}
+
+// CancelPipeline cancels a running pipeline.
+func (g *GitLab) CancelPipeline(ctx context.Context, project string, id int) error {
+	_, _, err := g.client.Pipelines.CancelPipelineBuild(project, id, gl.WithContext(ctx))
+	if err != nil {
+		return fmt.Errorf("gitlab cancel pipeline: %w", err)
+	}
+	return nil
+}
+
+// ListPipelineJobs returns jobs for a given pipeline.
+func (g *GitLab) ListPipelineJobs(ctx context.Context, project string, pipelineID int) ([]provider.Job, error) {
+	jobs, _, err := g.client.Jobs.ListPipelineJobs(project, pipelineID, nil, gl.WithContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("gitlab list pipeline jobs: %w", err)
+	}
+
+	result := make([]provider.Job, len(jobs))
+	for i, j := range jobs {
+		result[i] = toJob(j)
+	}
+	return result, nil
+}
+
+// GetJobLogs returns the trace (log output) for a single CI/CD job.
+func (g *GitLab) GetJobLogs(ctx context.Context, project string, jobID int) (string, error) {
+	r, _, err := g.client.Jobs.GetTraceFile(project, jobID, gl.WithContext(ctx))
+	if err != nil {
+		return "", fmt.Errorf("gitlab get job logs: %w", err)
+	}
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return "", fmt.Errorf("gitlab read job logs: %w", err)
+	}
+	return string(b), nil
+}
+
+// ListArtifacts returns artifacts for a given pipeline.
+func (g *GitLab) ListArtifacts(ctx context.Context, project string, pipelineID int) ([]provider.Artifact, error) {
+	jobs, _, err := g.client.Jobs.ListPipelineJobs(project, pipelineID, nil, gl.WithContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("gitlab list artifacts: %w", err)
+	}
+
+	var result []provider.Artifact
+	for _, j := range jobs {
+		for _, a := range j.Artifacts {
+			result = append(result, provider.Artifact{
+				Name:        a.Filename,
+				Size:        int64(a.Size),
+				Expired:     j.ArtifactsExpireAt != nil && j.ArtifactsExpireAt.Before(time.Now()),
+				DownloadURL: "", // GitLab requires per-job download endpoint
+			})
+		}
+	}
+	return result, nil
+}
+
+// DownloadArtifact downloads a single artifact by job ID to destDir.
+func (g *GitLab) DownloadArtifact(ctx context.Context, project string, jobID int, destDir string) error {
+	r, _, err := g.client.Jobs.GetJobArtifacts(project, jobID, gl.WithContext(ctx))
+	if err != nil {
+		return fmt.Errorf("gitlab download artifact: %w", err)
+	}
+	// Write the zip archive to destDir/artifacts.zip
+	dest := filepath.Join(destDir, "artifacts.zip")
+	out, err := os.Create(dest)
+	if err != nil {
+		return fmt.Errorf("gitlab download artifact: create file: %w", err)
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, r); err != nil {
+		return fmt.Errorf("gitlab download artifact: write: %w", err)
+	}
+	return nil
+}
+
+// ─── CI/CD conversion helpers ─────────────────────────────────────────────────
+
+func toPipelineInfo(project string, p *gl.PipelineInfo) provider.Pipeline {
+	return provider.Pipeline{
+		ID:        p.ID,
+		IID:       p.IID,
+		Project:   project,
+		Status:    p.Status,
+		Ref:       p.Ref,
+		SHA:       p.SHA,
+		WebURL:    p.WebURL,
+		CreatedAt: derefTime(p.CreatedAt),
+		UpdatedAt: derefTime(p.UpdatedAt),
+	}
+}
+
+func toPipeline(project string, p *gl.Pipeline) provider.Pipeline {
+	out := provider.Pipeline{
+		ID:        p.ID,
+		IID:       p.IID,
+		Project:   project,
+		Status:    p.Status,
+		Ref:       p.Ref,
+		SHA:       p.SHA,
+		WebURL:    p.WebURL,
+		CreatedAt: derefTime(p.CreatedAt),
+		UpdatedAt: derefTime(p.UpdatedAt),
+	}
+	if p.User != nil {
+		out.Author = provider.User{
+			ID:       p.User.ID,
+			Username: p.User.Username,
+			Name:     p.User.Name,
+			WebURL:   p.User.WebURL,
+		}
+	}
+	if p.FinishedAt != nil {
+		t := *p.FinishedAt
+		out.FinishedAt = &t
+	}
+	return out
+}
+
+func toJob(j *gl.Job) provider.Job {
+	out := provider.Job{
+		ID:     j.ID,
+		Name:   j.Name,
+		Status: j.Status,
+		Stage:  j.Stage,
+		Ref:    j.Ref,
+		WebURL: j.WebURL,
+	}
+	if j.StartedAt != nil {
+		t := *j.StartedAt
+		out.StartedAt = &t
+	}
+	if j.FinishedAt != nil {
+		t := *j.FinishedAt
+		out.FinishedAt = &t
+	}
+	return out
 }
 
 // ─── conversion helpers ───────────────────────────────────────────────────────

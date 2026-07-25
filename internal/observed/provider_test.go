@@ -61,6 +61,16 @@ func (*completeProvider) CreateLabel(context.Context, string, provider.CreateLab
 func (*completeProvider) ListUsers(context.Context, provider.ListUsersOptions) ([]provider.User, error) {
 	return nil, nil
 }
+func (*completeProvider) GetProject(context.Context, string) (provider.Project, error) {
+	return provider.Project{}, nil
+}
+func (*completeProvider) ListWorkItems(context.Context, string, provider.ListWorkItemsOptions) ([]provider.WorkItem, error) {
+	return nil, nil
+}
+func (*completeProvider) CreateWorkItem(context.Context, string, provider.CreateWorkItemOptions) (provider.WorkItem, error) {
+	return provider.WorkItem{}, nil
+}
+func (*completeProvider) CloseWorkItem(context.Context, string, int) error { return nil }
 func (*completeProvider) CreateGroupMilestone(context.Context, int, provider.CreateMilestoneOptions) (provider.Milestone, error) {
 	return provider.Milestone{}, nil
 }
@@ -69,6 +79,9 @@ func (*completeProvider) ListGroupMilestones(context.Context, int, provider.List
 }
 func (*completeProvider) ListMilestones(context.Context, string, provider.ListMilestonesOptions) ([]provider.Milestone, error) {
 	return nil, nil
+}
+func (*completeProvider) GetMilestone(context.Context, string, int) (provider.Milestone, error) {
+	return provider.Milestone{}, nil
 }
 func (*completeProvider) ResolveGroup(context.Context, string) (int, error) {
 	return 0, nil
@@ -80,6 +93,41 @@ func (*completeProvider) ListGroupEpics(context.Context, int, provider.ListGroup
 	return nil, nil
 }
 func (*completeProvider) LinkIssueToEpic(context.Context, int, int, int) error { return nil }
+func (*completeProvider) UpdateGroupEpic(context.Context, int, int, provider.UpdateEpicOptions) (provider.Epic, error) {
+	return provider.Epic{}, nil
+}
+func (*completeProvider) ListEpicIssues(context.Context, int, int) ([]provider.Issue, error) {
+	return nil, nil
+}
+func (*completeProvider) CreateMilestone(context.Context, string, provider.CreateMilestoneOptions) (provider.Milestone, error) {
+	return provider.Milestone{}, nil
+}
+func (*completeProvider) UpdateMilestone(context.Context, string, int, provider.UpdateMilestoneOptions) (provider.Milestone, error) {
+	return provider.Milestone{}, nil
+}
+func (*completeProvider) ListPipelines(context.Context, string, provider.ListPipelinesOptions) ([]provider.Pipeline, error) {
+	return nil, nil
+}
+func (*completeProvider) GetPipeline(context.Context, string, int) (provider.Pipeline, error) {
+	return provider.Pipeline{}, nil
+}
+func (*completeProvider) RunPipeline(context.Context, string, provider.RunPipelineOptions) (provider.Pipeline, error) {
+	return provider.Pipeline{}, nil
+}
+func (*completeProvider) RetryPipeline(context.Context, string, int) (provider.Pipeline, error) {
+	return provider.Pipeline{}, nil
+}
+func (*completeProvider) CancelPipeline(context.Context, string, int) error { return nil }
+func (*completeProvider) ListPipelineJobs(context.Context, string, int) ([]provider.Job, error) {
+	return nil, nil
+}
+func (*completeProvider) GetJobLogs(context.Context, string, int) (string, error) {
+	return "", nil
+}
+func (*completeProvider) ListArtifacts(context.Context, string, int) ([]provider.Artifact, error) {
+	return nil, nil
+}
+func (*completeProvider) DownloadArtifact(context.Context, string, int, string) error { return nil }
 
 type fakeProvider struct {
 	provider.Provider
@@ -174,17 +222,35 @@ func TestProviderDecoratesCompleteInterface(t *testing.T) {
 	_, _ = p.ListLabels(ctx, "p")
 	_, _ = p.CreateLabel(ctx, "p", provider.CreateLabelOptions{})
 	_, _ = p.ListUsers(ctx, provider.ListUsersOptions{})
+	_, _ = p.GetProject(ctx, "g/p")
+	_, _ = p.ListWorkItems(ctx, "g/p", provider.ListWorkItemsOptions{})
+	_, _ = p.CreateWorkItem(ctx, "g/p", provider.CreateWorkItemOptions{})
+	_ = p.CloseWorkItem(ctx, "g/p", 1)
 	_, _ = p.CreateGroupMilestone(ctx, 1, provider.CreateMilestoneOptions{})
 	_, _ = p.ListGroupMilestones(ctx, 1, provider.ListGroupMilestonesOptions{})
 	_, _ = p.ListMilestones(ctx, "g/p", provider.ListMilestonesOptions{})
+	_, _ = p.GetMilestone(ctx, "g/p", 1)
+	_, _ = p.CreateMilestone(ctx, "g/p", provider.CreateMilestoneOptions{})
+	_, _ = p.UpdateMilestone(ctx, "g/p", 1, provider.UpdateMilestoneOptions{})
 	_, _ = p.ResolveGroup(ctx, "g")
 	_, _ = p.CreateGroupEpic(ctx, 1, provider.CreateEpicOptions{})
 	_, _ = p.ListGroupEpics(ctx, 1, provider.ListGroupEpicsOptions{})
+	_, _ = p.UpdateGroupEpic(ctx, 1, 2, provider.UpdateEpicOptions{})
+	_, _ = p.ListEpicIssues(ctx, 1, 2)
 	if err := p.LinkIssueToEpic(ctx, 1, 2, 3); err != nil {
 		t.Fatal(err)
 	}
+	_, _ = p.ListPipelines(ctx, "g/p", provider.ListPipelinesOptions{})
+	_, _ = p.GetPipeline(ctx, "g/p", 1)
+	_, _ = p.RunPipeline(ctx, "g/p", provider.RunPipelineOptions{})
+	_, _ = p.RetryPipeline(ctx, "g/p", 1)
+	_ = p.CancelPipeline(ctx, "g/p", 1)
+	_, _ = p.ListPipelineJobs(ctx, "g/p", 1)
+	_, _ = p.GetJobLogs(ctx, "g/p", 1)
+	_, _ = p.ListArtifacts(ctx, "g/p", 1)
+	_ = p.DownloadArtifact(ctx, "g/p", 1, "artifact.zip")
 	receipts, err := s.Receipts(ctx)
-	if err != nil || len(receipts) != 46 {
+	if err != nil || len(receipts) != 82 {
 		t.Fatalf("receipts=%d err=%v", len(receipts), err)
 	}
 }

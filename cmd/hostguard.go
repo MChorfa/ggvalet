@@ -22,6 +22,12 @@ var hostNeutralPrefixes = []string{
 	"ggvalet mr",    // fully migrated to client.Provider (P10/P14/P15)
 	"ggvalet label", // fully migrated to client.Provider (P9/P16)
 	"ggvalet standup", // migrated to client.Provider (journal + ListMyIssues + CreateIssue)
+	"ggvalet epic",  // migrated to client.Provider (ResolveGroup + ListGroupEpics + CreateGroupEpic + UpdateGroupEpic + ListEpicIssues)
+	"ggvalet milestone", // migrated to client.Provider (ListMilestones + GetMilestone + CreateMilestone + UpdateMilestone)
+	"ggvalet sync",      // migrated to client.Provider (ListIssues + CreateIssue + ListGroupEpics + CreateGroupEpic + ListMilestones + CreateMilestone + ResolveGroup)
+	"ggvalet shields",   // migrated to client.Provider (GetProject + ListPipelines + ListMilestones + ListLabels + GetIssue)
+	"ggvalet wi",        // migrated to client.Provider (ListWorkItems + CreateWorkItem + CloseWorkItem); GitLab-only surface, ErrUnsupported elsewhere
+	"ggvalet renovate",  // project-scoped path migrated to client.Provider; all-projects path is GitLab-only and fails loud when glClient.GL == nil
 }
 
 // hostNeutralLeaves holds individual leaf commands that are host-neutral while
@@ -30,8 +36,7 @@ var hostNeutralPrefixes = []string{
 // per-leaf entries go here when a partially-migrated parent appears; see
 // docs/VWP-ATTESTATION.md RES-01.
 var hostNeutralLeaves = map[string]bool{
-	"ggvalet":              true, // root help / usage
-	"ggvalet shields chips": true, // migrated to client.Provider; badge stays GitLab-only
+	"ggvalet": true, // root help / usage
 }
 
 // hostBlockedLeaves are leaves under a host-neutral prefix that still issue raw

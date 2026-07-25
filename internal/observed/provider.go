@@ -174,9 +174,39 @@ func (p *Provider) ListUsers(ctx context.Context, opts provider.ListUsersOptions
 	})
 }
 
+func (p *Provider) GetProject(ctx context.Context, project string) (provider.Project, error) {
+	return call(ctx, p, "get", "project", project, project, func() (provider.Project, error) {
+		return p.inner.GetProject(ctx, project)
+	})
+}
+
+func (p *Provider) ListWorkItems(ctx context.Context, project string, opts provider.ListWorkItemsOptions) ([]provider.WorkItem, error) {
+	return call(ctx, p, "list", "work-item", project, opts, func() ([]provider.WorkItem, error) {
+		return p.inner.ListWorkItems(ctx, project, opts)
+	})
+}
+
+func (p *Provider) CreateWorkItem(ctx context.Context, project string, opts provider.CreateWorkItemOptions) (provider.WorkItem, error) {
+	return call(ctx, p, "create", "work-item", project, opts, func() (provider.WorkItem, error) {
+		return p.inner.CreateWorkItem(ctx, project, opts)
+	})
+}
+
+func (p *Provider) CloseWorkItem(ctx context.Context, project string, id int) error {
+	return callErr(ctx, p, "close", "work-item", project, id, func() error {
+		return p.inner.CloseWorkItem(ctx, project, id)
+	})
+}
+
 func (p *Provider) ListMilestones(ctx context.Context, project string, opts provider.ListMilestonesOptions) ([]provider.Milestone, error) {
 	return call(ctx, p, "list", "milestone", project, opts, func() ([]provider.Milestone, error) {
 		return p.inner.ListMilestones(ctx, project, opts)
+	})
+}
+
+func (p *Provider) GetMilestone(ctx context.Context, project string, id int) (provider.Milestone, error) {
+	return call(ctx, p, "get", "milestone", project, id, func() (provider.Milestone, error) {
+		return p.inner.GetMilestone(ctx, project, id)
 	})
 }
 
@@ -218,6 +248,95 @@ func (p *Provider) LinkIssueToEpic(ctx context.Context, groupID, epicIID, issueI
 	input := struct{ GroupID, EpicIID, IssueID int }{groupID, epicIID, issueID}
 	return callErr(ctx, p, "link", "epic-issue", fmt.Sprint(groupID), input, func() error {
 		return linker.LinkIssueToEpic(ctx, groupID, epicIID, issueID)
+	})
+}
+
+func (p *Provider) UpdateGroupEpic(ctx context.Context, groupID int, epicIID int, opts provider.UpdateEpicOptions) (provider.Epic, error) {
+	return call(ctx, p, "update", "epic", fmt.Sprint(groupID), struct {
+		EpicIID int
+		Opts    provider.UpdateEpicOptions
+	}{epicIID, opts}, func() (provider.Epic, error) {
+		return p.inner.UpdateGroupEpic(ctx, groupID, epicIID, opts)
+	})
+}
+
+func (p *Provider) ListEpicIssues(ctx context.Context, groupID int, epicIID int) ([]provider.Issue, error) {
+	return call(ctx, p, "list", "epic-issue", fmt.Sprint(groupID), epicIID, func() ([]provider.Issue, error) {
+		return p.inner.ListEpicIssues(ctx, groupID, epicIID)
+	})
+}
+
+func (p *Provider) CreateMilestone(ctx context.Context, project string, opts provider.CreateMilestoneOptions) (provider.Milestone, error) {
+	return call(ctx, p, "create", "milestone", project, opts, func() (provider.Milestone, error) {
+		return p.inner.CreateMilestone(ctx, project, opts)
+	})
+}
+
+func (p *Provider) UpdateMilestone(ctx context.Context, project string, id int, opts provider.UpdateMilestoneOptions) (provider.Milestone, error) {
+	return call(ctx, p, "update", "milestone", project, struct {
+		ID   int
+		Opts provider.UpdateMilestoneOptions
+	}{id, opts}, func() (provider.Milestone, error) {
+		return p.inner.UpdateMilestone(ctx, project, id, opts)
+	})
+}
+
+// ─── CI/CD pipeline surface ───────────────────────────────────────────────────
+
+func (p *Provider) ListPipelines(ctx context.Context, project string, opts provider.ListPipelinesOptions) ([]provider.Pipeline, error) {
+	return call(ctx, p, "list", "pipeline", project, opts, func() ([]provider.Pipeline, error) {
+		return p.inner.ListPipelines(ctx, project, opts)
+	})
+}
+
+func (p *Provider) GetPipeline(ctx context.Context, project string, id int) (provider.Pipeline, error) {
+	return call(ctx, p, "get", "pipeline", project, id, func() (provider.Pipeline, error) {
+		return p.inner.GetPipeline(ctx, project, id)
+	})
+}
+
+func (p *Provider) RunPipeline(ctx context.Context, project string, opts provider.RunPipelineOptions) (provider.Pipeline, error) {
+	return call(ctx, p, "run", "pipeline", project, opts, func() (provider.Pipeline, error) {
+		return p.inner.RunPipeline(ctx, project, opts)
+	})
+}
+
+func (p *Provider) RetryPipeline(ctx context.Context, project string, id int) (provider.Pipeline, error) {
+	return call(ctx, p, "retry", "pipeline", project, id, func() (provider.Pipeline, error) {
+		return p.inner.RetryPipeline(ctx, project, id)
+	})
+}
+
+func (p *Provider) CancelPipeline(ctx context.Context, project string, id int) error {
+	return callErr(ctx, p, "cancel", "pipeline", project, id, func() error {
+		return p.inner.CancelPipeline(ctx, project, id)
+	})
+}
+
+func (p *Provider) ListPipelineJobs(ctx context.Context, project string, pipelineID int) ([]provider.Job, error) {
+	return call(ctx, p, "list", "job", project, pipelineID, func() ([]provider.Job, error) {
+		return p.inner.ListPipelineJobs(ctx, project, pipelineID)
+	})
+}
+
+func (p *Provider) GetJobLogs(ctx context.Context, project string, jobID int) (string, error) {
+	return call(ctx, p, "logs", "job", project, jobID, func() (string, error) {
+		return p.inner.GetJobLogs(ctx, project, jobID)
+	})
+}
+
+func (p *Provider) ListArtifacts(ctx context.Context, project string, pipelineID int) ([]provider.Artifact, error) {
+	return call(ctx, p, "list", "artifact", project, pipelineID, func() ([]provider.Artifact, error) {
+		return p.inner.ListArtifacts(ctx, project, pipelineID)
+	})
+}
+
+func (p *Provider) DownloadArtifact(ctx context.Context, project string, artifactID int, destDir string) error {
+	return callErr(ctx, p, "download", "artifact", project, struct {
+		ArtifactID int
+		DestDir    string
+	}{artifactID, destDir}, func() error {
+		return p.inner.DownloadArtifact(ctx, project, artifactID, destDir)
 	})
 }
 

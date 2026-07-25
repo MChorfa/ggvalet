@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/MChorfa/ggvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
-	gl "github.com/xanzy/go-gitlab"
 )
 
 func milestoneCmd() *cobra.Command {
@@ -43,9 +43,9 @@ func milestoneListCmd() *cobra.Command {
 				return fmt.Errorf("--project required")
 			}
 
-			ms, _, err := glClient.GL.Milestones.ListMilestones(project, &gl.ListMilestonesOptions{
-				State:       gl.Ptr(state),
-				ListOptions: gl.ListOptions{PerPage: 50},
+			ms, err := glClient.Provider.ListMilestones(cmd.Context(), project, provider.ListMilestonesOptions{
+				State:   state,
+				PerPage: 50,
 			})
 			if err != nil {
 				glClient.RecErr(journal.OpList, journal.EntityMilestone, project, "", err.Error())
@@ -59,18 +59,12 @@ func milestoneListCmd() *cobra.Command {
 			table.SetHeader([]string{"ID", "Title", "State", "Start", "Due", "Open Issues", "Closed Issues"})
 			table.SetBorder(false)
 			for _, m := range ms {
-				start, due := "", ""
-				if m.StartDate != nil {
-					start = m.StartDate.String()
-				}
-				if m.DueDate != nil {
-					due = m.DueDate.String()
-				}
 				table.Append([]string{
 					strconv.Itoa(m.ID),
 					truncate(m.Title, 45),
 					m.State,
-					start, due,
+					m.StartDate,
+					m.DueDate,
 					"n/a",
 					"n/a",
 				})
@@ -103,30 +97,24 @@ func milestoneCreateCmd() *cobra.Command {
 				return fmt.Errorf("--title required")
 			}
 
-			opts := &gl.CreateMilestoneOptions{
-				Title: gl.Ptr(title),
-			}
-			if description != "" {
-				opts.Description = gl.Ptr(description)
+			opts := provider.CreateMilestoneOptions{
+				Title:       title,
+				Description: description,
 			}
 			if startDate != "" {
-				t, err := time.Parse("2006-01-02", startDate)
-				if err != nil {
-					return fmt.Errorf("invalid --start-date: %w", err)
+				if _, err := time.Parse("2006-01-02", startDate); err != nil {
+					return fmt.Errorf("invalid --start-date (YYYY-MM-DD)")
 				}
-				iso := gl.ISOTime(t)
-				opts.StartDate = &iso
+				opts.StartDate = startDate
 			}
 			if dueDate != "" {
-				t, err := time.Parse("2006-01-02", dueDate)
-				if err != nil {
-					return fmt.Errorf("invalid --due-date: %w", err)
+				if _, err := time.Parse("2006-01-02", dueDate); err != nil {
+					return fmt.Errorf("invalid --due-date (YYYY-MM-DD)")
 				}
-				iso := gl.ISOTime(t)
-				opts.DueDate = &iso
+				opts.DueDate = dueDate
 			}
 
-			m, _, err := glClient.GL.Milestones.CreateMilestone(project, opts)
+			m, err := glClient.Provider.CreateMilestone(cmd.Context(), project, opts)
 			if err != nil {
 				glClient.RecErr(journal.OpCreate, journal.EntityMilestone, project, "", err.Error())
 				return fmt.Errorf("create milestone: %w", err)
@@ -166,8 +154,9 @@ func milestoneCloseCmd() *cobra.Command {
 				return fmt.Errorf("--id required (milestone numeric ID, not IID)")
 			}
 
-			m, _, err := glClient.GL.Milestones.UpdateMilestone(project, id, &gl.UpdateMilestoneOptions{
-				StateEvent: gl.Ptr("close"),
+			closed := "close"
+			m, err := glClient.Provider.UpdateMilestone(cmd.Context(), project, id, provider.UpdateMilestoneOptions{
+				State: &closed,
 			})
 			if err != nil {
 				glClient.RecErr(journal.OpClose, journal.EntityMilestone, project, "", err.Error())
@@ -205,15 +194,15 @@ func milestoneStatsCmd() *cobra.Command {
 				return fmt.Errorf("--id required")
 			}
 
-			m, _, err := glClient.GL.Milestones.GetMilestone(project, id)
+			m, err := glClient.Provider.GetMilestone(cmd.Context(), project, id)
 			if err != nil {
 				return fmt.Errorf("get milestone: %w", err)
 			}
 
 			fmt.Printf("\nMilestone: %s\n", m.Title)
 			fmt.Printf("  State          : %s\n", m.State)
-			if m.DueDate != nil {
-				fmt.Printf("  Due            : %s\n", m.DueDate.String())
+			if m.DueDate != "" {
+				fmt.Printf("  Due            : %s\n", m.DueDate)
 			}
 			fmt.Printf("  Statistics     : unavailable in this client version\n")
 			fmt.Println()

@@ -33,3 +33,13 @@ func TestProjectFromRef(t *testing.T) {
 		t.Errorf("projectFromRef(nil) = %q; want empty", got)
 	}
 }
+
+func TestOrDefault(t *testing.T) {
+	t.Parallel()
+	if got := orDefault(0, 50); got != 50 {
+		t.Errorf("orDefault(0,50) = %d; want 50", got)
+	}
+	if got := orDefault(10, 50); got != 10 {
+		t.Errorf("orDefault(10,50) = %d; want 10", got)
+	}
+}

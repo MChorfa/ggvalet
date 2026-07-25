@@ -1,17 +1,16 @@
 // Work Items are a newer GitLab feature, available via both REST and GraphQL.
-// This file uses the REST endpoint /projects/:id/work_items.
+// This file uses the host-neutral provider.WorkItem surface, which maps to
+// GitLab's /projects/:id/work_items REST endpoint. On GitHub/Gitea the
+// provider returns ErrUnsupported.
 // Requires GitLab 15.1+ with work_items feature flag enabled on your instance.
 package cmd
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 
 	"github.com/MChorfa/ggvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
@@ -40,22 +39,6 @@ func workItemCmd() *cobra.Command {
 
 // ─── list ─────────────────────────────────────────────────────────────────────
 
-type wiListResponse struct {
-	WorkItems []struct {
-		ID    int    `json:"id"`
-		IID   int    `json:"iid"`
-		Title string `json:"title"`
-		State string `json:"state"`
-		Type  struct {
-			Name string `json:"name"`
-		} `json:"work_item_type"`
-		Assignees []struct {
-			Username string `json:"username"`
-		} `json:"assignees"`
-		WebURL string `json:"web_url"`
-	} `json:"work_items"`
-}
-
 func wiListCmd() *cobra.Command {
 	var project, state, witype string
 
@@ -70,56 +53,38 @@ func wiListCmd() *cobra.Command {
 				return fmt.Errorf("--project required")
 			}
 
-			url := fmt.Sprintf("%s/api/v4/projects/%s/work_items?state=%s&per_page=50",
-				cfg.GitLabURL, urlEncode(project), state)
+			opts := provider.ListWorkItemsOptions{
+				State:   state,
+				PerPage: 50,
+			}
 			if witype != "" {
 				if mapped, ok := wiType[witype]; ok {
-					url += "&work_item_type_name=" + mapped
+					opts.Type = mapped
+				} else {
+					opts.Type = witype
 				}
 			}
 
-			body, err := glGet(url)
+			items, err := glClient.Provider.ListWorkItems(cmd.Context(), project, opts)
 			if err != nil {
 				glClient.RecErr(journal.OpList, journal.EntityWorkItem, project, "", err.Error())
 				return err
-			}
-
-			// GitLab returns a list directly for work_items endpoint
-			var items []struct {
-				ID    int    `json:"id"`
-				IID   int    `json:"iid"`
-				Title string `json:"title"`
-				State string `json:"state"`
-				Type  struct {
-					Name string `json:"name"`
-				} `json:"work_item_type"`
-				Assignees []struct {
-					Username string `json:"username"`
-				} `json:"assignees"`
-				WebURL string `json:"web_url"`
-			}
-			if err := json.Unmarshal(body, &items); err != nil {
-				return fmt.Errorf("parse work items: %w", err)
 			}
 
 			glClient.Rec(journal.OpList, journal.EntityWorkItem, project, "", 0, 0,
 				fmt.Sprintf("list %d work items (state=%s)", len(items), state), "")
 
 			table := tablewriter.NewWriter(os.Stdout)
-			table.SetHeader([]string{"IID", "Type", "Title", "State", "Assignee"})
+			table.SetHeader([]string{"IID", "Type", "Title", "State", "Web URL"})
 			table.SetBorder(false)
 			table.SetAutoWrapText(false)
 			for _, wi := range items {
-				assignee := ""
-				if len(wi.Assignees) > 0 {
-					assignee = wi.Assignees[0].Username
-				}
 				table.Append([]string{
 					fmt.Sprintf("%d", wi.IID),
-					wi.Type.Name,
+					wi.Type,
 					truncate(wi.Title, 50),
 					wi.State,
-					assignee,
+					wi.WebURL,
 				})
 			}
 			table.Render()
@@ -160,24 +125,13 @@ func wiCreateCmd() *cobra.Command {
 				}
 			}
 
-			payload := map[string]any{
-				"title":               title,
-				"work_item_type_name": typeName,
-			}
-			body, err := glPost(fmt.Sprintf("%s/api/v4/projects/%s/work_items",
-				cfg.GitLabURL, urlEncode(project)), payload)
+			wi, err := glClient.Provider.CreateWorkItem(cmd.Context(), project, provider.CreateWorkItemOptions{
+				Title: title,
+				Type:  typeName,
+			})
 			if err != nil {
 				glClient.RecErr(journal.OpCreate, journal.EntityWorkItem, project, "", err.Error())
 				return err
-			}
-
-			var wi struct {
-				IID    int    `json:"iid"`
-				WebURL string `json:"web_url"`
-				Title  string `json:"title"`
-			}
-			if err := json.Unmarshal(body, &wi); err != nil {
-				return fmt.Errorf("parse create response: %w", err)
 			}
 
 			glClient.Rec(journal.OpCreate, journal.EntityWorkItem, project, "", 0, wi.IID,
@@ -212,12 +166,7 @@ func wiCloseCmd() *cobra.Command {
 				return fmt.Errorf("--id required (work item ID)")
 			}
 
-			payload := map[string]any{
-				"state_event": "close",
-			}
-			_, err := glPatch(fmt.Sprintf("%s/api/v4/projects/%s/work_items/%d",
-				cfg.GitLabURL, urlEncode(project), id), payload)
-			if err != nil {
+			if err := glClient.Provider.CloseWorkItem(cmd.Context(), project, id); err != nil {
 				glClient.RecErr(journal.OpClose, journal.EntityWorkItem, project, "", err.Error())
 				return err
 			}
@@ -230,67 +179,4 @@ func wiCloseCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&project, "project", "p", "", "Project path or ID")
 	cmd.Flags().IntVar(&id, "id", 0, "Work item ID")
 	return cmd
-}
-
-// ─── HTTP helpers (uses token from cfg via closure) ───────────────────────────
-
-func glGet(url string) ([]byte, error) {
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set("PRIVATE-TOKEN", cfg.Token)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("GET %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("GET %s → %d: %s", url, resp.StatusCode, string(body))
-	}
-	return body, nil
-}
-
-func glPost(url string, payload any) ([]byte, error) {
-	data, _ := json.Marshal(payload)
-	req, _ := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
-	req.Header.Set("PRIVATE-TOKEN", cfg.Token)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("POST %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("POST %s → %d: %s", url, resp.StatusCode, string(body))
-	}
-	return body, nil
-}
-
-func glPatch(url string, payload any) ([]byte, error) {
-	data, _ := json.Marshal(payload)
-	req, _ := http.NewRequest(http.MethodPatch, url, bytes.NewReader(data))
-	req.Header.Set("PRIVATE-TOKEN", cfg.Token)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("PATCH %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("PATCH %s → %d: %s", url, resp.StatusCode, string(body))
-	}
-	return body, nil
-}
-
-func urlEncode(s string) string {
-	out := ""
-	for _, c := range s {
-		if c == '/' {
-			out += "%2F"
-		} else {
-			out += string(c)
-		}
-	}
-	return out
 }

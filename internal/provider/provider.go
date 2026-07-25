@@ -184,6 +184,72 @@ type CreateEpicOptions struct {
 	Labels      []string
 }
 
+// UpdateEpicOptions captures the mutable fields on an epic update. Pointer
+// fields distinguish "leave unchanged" (nil) from "set to value".
+type UpdateEpicOptions struct {
+	Title       *string
+	Description *string
+	State       *string // neutral: "opened" | "closed"; adapters translate
+}
+
+// UpdateMilestoneOptions captures the mutable fields on a milestone update.
+type UpdateMilestoneOptions struct {
+	Title       *string
+	Description *string
+	State       *string // neutral: "active" | "closed"; adapters translate
+}
+
+// Pipeline is a host-neutral CI/CD pipeline / workflow run.
+type Pipeline struct {
+	ID         int
+	IID        int // GitLab pipeline IID; same as ID on GitHub/Gitea
+	Project    string
+	Status     string // running|pending|success|failed|canceled|skipped
+	Ref        string // branch/tag ref
+	SHA        string // commit SHA
+	CommitMsg  string
+	Author     User
+	WebURL     string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	FinishedAt *time.Time
+}
+
+// Job is a host-neutral CI/CD job within a pipeline/run.
+type Job struct {
+	ID         int
+	Name       string
+	Status     string // running|pending|success|failed|canceled|skipped
+	Stage      string // GitLab stage; empty on GitHub/Gitea
+	Ref        string
+	WebURL     string
+	StartedAt  *time.Time
+	FinishedAt *time.Time
+}
+
+// Artifact is a host-neutral CI/CD artifact produced by a job.
+type Artifact struct {
+	Name        string
+	Size        int64
+	Expired     bool
+	DownloadURL string
+}
+
+// ListPipelinesOptions filters a pipeline / workflow run list query.
+type ListPipelinesOptions struct {
+	Status  string // running|pending|success|failed|canceled|all
+	Ref     string // branch/tag ref
+	SHA     string // commit SHA
+	Page    int
+	PerPage int
+}
+
+// RunPipelineOptions captures the fields accepted when triggering a pipeline.
+type RunPipelineOptions struct {
+	Ref       string            // branch or tag (required)
+	Variables map[string]string // optional CI/CD variables
+}
+
 // ListMilestonesOptions filters a project-scoped milestone list query.
 // Milestones are repo-scoped on GitHub/Gitea and project-scoped on GitLab.
 type ListMilestonesOptions struct {
@@ -216,6 +282,47 @@ type ListUsersOptions struct {
 	Search  string
 	Page    int
 	PerPage int
+}
+
+// Project is a host-neutral repository/project descriptor. OpenIssuesCount
+// is the count of open issues (not MRs/PRs); it is 0 on hosts that don't
+// expose a precomputed counter.
+type Project struct {
+	ID             int
+	Name           string
+	Path           string // full path with namespace, e.g. "group/proj"
+	FullName       string // display name, e.g. "Group / Proj"
+	Description    string
+	WebURL         string
+	DefaultBranch  string
+	OpenIssuesCount int
+	Archived       bool
+}
+
+// WorkItem is a host-neutral work item (GitLab-native; GitHub/Gitea return
+// ErrUnsupported). On GitLab it maps to the /projects/:id/work_items REST
+// surface (tasks, objectives, key results, issues).
+type WorkItem struct {
+	ID      int
+	IID     int
+	Title   string
+	State   string
+	Type    string // TASK|OBJECTIVE|KEY_RESULT|ISSUE
+	WebURL  string
+}
+
+// ListWorkItemsOptions filters a work item list query.
+type ListWorkItemsOptions struct {
+	State string // opened|closed|all
+	Type  string // TASK|OBJECTIVE|KEY_RESULT|ISSUE (empty = all)
+	Page  int
+	PerPage int
+}
+
+// CreateWorkItemOptions captures the fields accepted on work item creation.
+type CreateWorkItemOptions struct {
+	Title string
+	Type  string // TASK|OBJECTIVE|KEY_RESULT|ISSUE; default TASK
 }
 
 // ListMergeRequestsOptions filters an MR/PR list query.
@@ -317,8 +424,19 @@ type Provider interface {
 	// User surface.
 	ListUsers(ctx context.Context, opts ListUsersOptions) ([]User, error)
 
+	// Project surface.
+	GetProject(ctx context.Context, project string) (Project, error)
+
+	// Work item surface (GitLab-native; ErrUnsupported on GitHub/Gitea).
+	ListWorkItems(ctx context.Context, project string, opts ListWorkItemsOptions) ([]WorkItem, error)
+	CreateWorkItem(ctx context.Context, project string, opts CreateWorkItemOptions) (WorkItem, error)
+	CloseWorkItem(ctx context.Context, project string, id int) error
+
 	// Milestone surface (project-scoped).
 	ListMilestones(ctx context.Context, project string, opts ListMilestonesOptions) ([]Milestone, error)
+	GetMilestone(ctx context.Context, project string, id int) (Milestone, error)
+	CreateMilestone(ctx context.Context, project string, opts CreateMilestoneOptions) (Milestone, error)
+	UpdateMilestone(ctx context.Context, project string, id int, opts UpdateMilestoneOptions) (Milestone, error)
 
 	// Milestone surface (group-scoped on GitLab).
 	CreateGroupMilestone(ctx context.Context, groupID int, opts CreateMilestoneOptions) (Milestone, error)
@@ -331,6 +449,19 @@ type Provider interface {
 	// Epic surface (group-scoped on GitLab; ErrUnsupported on GitHub).
 	CreateGroupEpic(ctx context.Context, groupID int, opts CreateEpicOptions) (Epic, error)
 	ListGroupEpics(ctx context.Context, groupID int, opts ListGroupEpicsOptions) ([]Epic, error)
+	UpdateGroupEpic(ctx context.Context, groupID int, epicIID int, opts UpdateEpicOptions) (Epic, error)
+	ListEpicIssues(ctx context.Context, groupID int, epicIID int) ([]Issue, error)
+
+	// CI/CD pipeline surface. ErrUnsupported on hosts without a CI/CD system.
+	ListPipelines(ctx context.Context, project string, opts ListPipelinesOptions) ([]Pipeline, error)
+	GetPipeline(ctx context.Context, project string, id int) (Pipeline, error)
+	RunPipeline(ctx context.Context, project string, opts RunPipelineOptions) (Pipeline, error)
+	RetryPipeline(ctx context.Context, project string, id int) (Pipeline, error)
+	CancelPipeline(ctx context.Context, project string, id int) error
+	ListPipelineJobs(ctx context.Context, project string, pipelineID int) ([]Job, error)
+	GetJobLogs(ctx context.Context, project string, jobID int) (string, error)
+	ListArtifacts(ctx context.Context, project string, pipelineID int) ([]Artifact, error)
+	DownloadArtifact(ctx context.Context, project string, artifactID int, destDir string) error
 }
 
 // EpicLinker is an optional capability implemented by providers with a

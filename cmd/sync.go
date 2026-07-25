@@ -9,6 +9,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -16,8 +17,8 @@ import (
 	"github.com/MChorfa/ggvalet/internal/client"
 	"github.com/MChorfa/ggvalet/internal/config"
 	"github.com/MChorfa/ggvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/spf13/cobra"
-	gl "github.com/xanzy/go-gitlab"
 )
 
 // ─── Sync marker helpers ──────────────────────────────────────────────────────
@@ -138,15 +139,14 @@ func syncIssuesCmd() *cobra.Command {
 			printSyncHeader("issues", srcHost, srcProject, dstHost, dstProject, dryRun)
 
 			// List source issues
-			listOpts := &gl.ListProjectIssuesOptions{
-				State:       gl.Ptr(state),
-				ListOptions: gl.ListOptions{PerPage: 100},
+			listOpts := provider.ListIssuesOptions{
+				State:   state,
+				PerPage: 100,
 			}
 			if labels != "" {
-				lv := gl.LabelOptions{labels}
-				listOpts.Labels = &lv
+				listOpts.Labels = strings.Split(labels, ",")
 			}
-			srcIssues, _, err := srcC.GL.Issues.ListProjectIssues(srcProject, listOpts)
+			srcIssues, err := srcC.Provider.ListIssues(cmd.Context(), srcProject, listOpts)
 			if err != nil {
 				return fmt.Errorf("list src issues: %w", err)
 			}
@@ -155,7 +155,7 @@ func syncIssuesCmd() *cobra.Command {
 			}
 
 			// Build destination dedup index
-			dstIndex, err := buildIssueSyncIndex(dstC, dstProject)
+			dstIndex, err := buildIssueSyncIndex(cmd.Context(), dstC, dstProject)
 			if err != nil {
 				return fmt.Errorf("build dst index: %w", err)
 			}
@@ -169,8 +169,7 @@ func syncIssuesCmd() *cobra.Command {
 					continue
 				}
 
-				desc := iss.Description + syncFooter(iss.WebURL)
-				lbls := gl.LabelOptions(iss.Labels)
+				desc := iss.Body + syncFooter(iss.WebURL)
 
 				if dryRun {
 					fmt.Printf("  %s #%d  %s\n",
@@ -179,10 +178,10 @@ func syncIssuesCmd() *cobra.Command {
 					continue
 				}
 
-				newIss, _, err := dstC.GL.Issues.CreateIssue(dstProject, &gl.CreateIssueOptions{
-					Title:       gl.Ptr(iss.Title),
-					Description: gl.Ptr(desc),
-					Labels:      &lbls,
+				newIss, err := dstC.Provider.CreateIssue(cmd.Context(), dstProject, provider.CreateIssueOptions{
+					Title:       iss.Title,
+					Description: desc,
+					Labels:      iss.Labels,
 				})
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "  %s %s: %v\n",
@@ -212,24 +211,24 @@ func syncIssuesCmd() *cobra.Command {
 	return cmd
 }
 
-func buildIssueSyncIndex(dstC *client.Client, dstProject string) (map[string]struct{}, error) {
+func buildIssueSyncIndex(ctx context.Context, dstC *client.Client, dstProject string) (map[string]struct{}, error) {
 	index := make(map[string]struct{})
 	page := 1
 	for {
-		issues, resp, err := dstC.GL.Issues.ListProjectIssues(dstProject,
-			&gl.ListProjectIssuesOptions{
-				State:       gl.Ptr("all"),
-				ListOptions: gl.ListOptions{PerPage: 100, Page: page},
-			})
+		issues, err := dstC.Provider.ListIssues(ctx, dstProject, provider.ListIssuesOptions{
+			State:   "all",
+			Page:    page,
+			PerPage: 100,
+		})
 		if err != nil {
 			return nil, err
 		}
 		for _, iss := range issues {
-			if src := extractSyncSrc(iss.Description); src != "" {
+			if src := extractSyncSrc(iss.Body); src != "" {
 				index[src] = struct{}{}
 			}
 		}
-		if resp.CurrentPage >= resp.TotalPages {
+		if len(issues) < 100 {
 			break
 		}
 		page++
@@ -275,11 +274,19 @@ func syncEpicsCmd() *cobra.Command {
 
 			printSyncHeader("epics", srcHost, srcGroup, dstHost, dstGroup, dryRun)
 
-			srcEpics, _, err := srcC.GL.Epics.ListGroupEpics(srcGroup,
-				&gl.ListGroupEpicsOptions{
-					State:       gl.Ptr(state),
-					ListOptions: gl.ListOptions{PerPage: 100},
-				})
+			srcGroupID, err := srcC.Provider.ResolveGroup(cmd.Context(), srcGroup)
+			if err != nil {
+				return fmt.Errorf("resolve src group: %w", err)
+			}
+			dstGroupID, err := dstC.Provider.ResolveGroup(cmd.Context(), dstGroup)
+			if err != nil {
+				return fmt.Errorf("resolve dst group: %w", err)
+			}
+
+			srcEpics, err := srcC.Provider.ListGroupEpics(cmd.Context(), srcGroupID, provider.ListGroupEpicsOptions{
+				State:   state,
+				PerPage: 100,
+			})
 			if err != nil {
 				return fmt.Errorf("list src epics: %w", err)
 			}
@@ -287,7 +294,7 @@ func syncEpicsCmd() *cobra.Command {
 				srcEpics = srcEpics[:limit]
 			}
 
-			dstIndex, err := buildEpicSyncIndex(dstC, dstGroup)
+			dstIndex, err := buildEpicSyncIndex(cmd.Context(), dstC, dstGroupID)
 			if err != nil {
 				return fmt.Errorf("build dst index: %w", err)
 			}
@@ -310,20 +317,11 @@ func syncEpicsCmd() *cobra.Command {
 					continue
 				}
 
-				opts := &gl.CreateEpicOptions{
-					Title:       gl.Ptr(ep.Title),
-					Description: gl.Ptr(desc),
-				}
-				if ep.StartDate != nil {
-					opts.StartDateFixed = ep.StartDate
-					opts.StartDateIsFixed = gl.Ptr(true)
-				}
-				if ep.DueDate != nil {
-					opts.DueDateFixed = ep.DueDate
-					opts.DueDateIsFixed = gl.Ptr(true)
-				}
-
-				newEp, _, err := dstC.GL.Epics.CreateEpic(dstGroup, opts)
+				newEp, err := dstC.Provider.CreateGroupEpic(cmd.Context(), dstGroupID, provider.CreateEpicOptions{
+					Title:       ep.Title,
+					Description: desc,
+					Labels:      ep.Labels,
+				})
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "  %s %s: %v\n",
 						colorErr("✗"), truncate(ep.Title, 50), err)
@@ -356,20 +354,27 @@ func syncEpicsCmd() *cobra.Command {
 	return cmd
 }
 
-func buildEpicSyncIndex(dstC *client.Client, dstGroup string) (map[string]struct{}, error) {
+func buildEpicSyncIndex(ctx context.Context, dstC *client.Client, dstGroupID int) (map[string]struct{}, error) {
 	index := make(map[string]struct{})
-	epics, _, err := dstC.GL.Epics.ListGroupEpics(dstGroup,
-		&gl.ListGroupEpicsOptions{
-			State:       gl.Ptr("all"),
-			ListOptions: gl.ListOptions{PerPage: 100},
+	page := 1
+	for {
+		epics, err := dstC.Provider.ListGroupEpics(ctx, dstGroupID, provider.ListGroupEpicsOptions{
+			State:   "all",
+			Page:    page,
+			PerPage: 100,
 		})
-	if err != nil {
-		return nil, err
-	}
-	for _, ep := range epics {
-		if src := extractSyncSrc(ep.Description); src != "" {
-			index[src] = struct{}{}
+		if err != nil {
+			return nil, err
 		}
+		for _, ep := range epics {
+			if src := extractSyncSrc(ep.Description); src != "" {
+				index[src] = struct{}{}
+			}
+		}
+		if len(epics) < 100 {
+			break
+		}
+		page++
 	}
 	return index, nil
 }
@@ -411,11 +416,10 @@ func syncMilestonesCmd() *cobra.Command {
 
 			printSyncHeader("milestones", srcHost, srcProject, dstHost, dstProject, dryRun)
 
-			srcMs, _, err := srcC.GL.Milestones.ListMilestones(srcProject,
-				&gl.ListMilestonesOptions{
-					State:       gl.Ptr("all"),
-					ListOptions: gl.ListOptions{PerPage: 100},
-				})
+			srcMs, err := srcC.Provider.ListMilestones(cmd.Context(), srcProject, provider.ListMilestonesOptions{
+				State:   "all",
+				PerPage: 100,
+			})
 			if err != nil {
 				return fmt.Errorf("list src milestones: %w", err)
 			}
@@ -424,7 +428,7 @@ func syncMilestonesCmd() *cobra.Command {
 			}
 
 			// Milestones: dedup by title (no URL marker possible)
-			dstTitles, err := buildMilestoneTitleIndex(dstC, dstProject)
+			dstTitles, err := buildMilestoneTitleIndex(cmd.Context(), dstC, dstProject)
 			if err != nil {
 				return fmt.Errorf("build dst index: %w", err)
 			}
@@ -444,14 +448,12 @@ func syncMilestonesCmd() *cobra.Command {
 					continue
 				}
 
-				opts := &gl.CreateMilestoneOptions{
-					Title: gl.Ptr(ms.Title),
-				}
-				if ms.Description != "" {
-					opts.Description = gl.Ptr(ms.Description)
-				}
-
-				newMs, _, err := dstC.GL.Milestones.CreateMilestone(dstProject, opts)
+				newMs, err := dstC.Provider.CreateMilestone(cmd.Context(), dstProject, provider.CreateMilestoneOptions{
+					Title:       ms.Title,
+					Description: ms.Description,
+					StartDate:   ms.StartDate,
+					DueDate:     ms.DueDate,
+				})
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "  %s %s: %v\n",
 						colorErr("✗"), truncate(ms.Title, 50), err)
@@ -477,18 +479,25 @@ func syncMilestonesCmd() *cobra.Command {
 	return cmd
 }
 
-func buildMilestoneTitleIndex(dstC *client.Client, dstProject string) (map[string]struct{}, error) {
+func buildMilestoneTitleIndex(ctx context.Context, dstC *client.Client, dstProject string) (map[string]struct{}, error) {
 	index := make(map[string]struct{})
-	ms, _, err := dstC.GL.Milestones.ListMilestones(dstProject,
-		&gl.ListMilestonesOptions{
-			State:       gl.Ptr("all"),
-			ListOptions: gl.ListOptions{PerPage: 100},
+	page := 1
+	for {
+		ms, err := dstC.Provider.ListMilestones(ctx, dstProject, provider.ListMilestonesOptions{
+			State:   "all",
+			Page:    page,
+			PerPage: 100,
 		})
-	if err != nil {
-		return nil, err
-	}
-	for _, m := range ms {
-		index[m.Title] = struct{}{}
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range ms {
+			index[m.Title] = struct{}{}
+		}
+		if len(ms) < 100 {
+			break
+		}
+		page++
 	}
 	return index, nil
 }

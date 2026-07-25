@@ -2,10 +2,13 @@ package gitea
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -280,7 +283,7 @@ func newTestGitea(t *testing.T) (*Gitea, *httptest.Server) {
 	srv := httptest.NewServer(mux)
 	client, err := giteasdk.NewClient(srv.URL,
 		giteasdk.SetToken("test-token"),
-		giteasdk.SetGiteaVersion("1.22.0"),
+		giteasdk.SetGiteaVersion("1.26.0"),
 	)
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
@@ -331,7 +334,7 @@ func testGiteaHandler(t *testing.T, w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case path == "/version":
-		fmt.Fprint(w, `{"version": "1.22.0"}`)
+		fmt.Fprint(w, `{"version": "1.26.0"}`)
 	case path == "/repos/issues/search":
 		// ListMyIssues sends type=issues; ListMyMergeRequests sends type=pulls.
 		if r.URL.Query().Get("type") == "pulls" {
@@ -382,8 +385,33 @@ func testGiteaHandler(t *testing.T, w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, userJSON)
 	case path == "/repos/owner/repo/milestones" && r.Method == "GET":
 		fmt.Fprint(w, `[{"id": 5, "title": "v1.0", "description": "First release", "state": "open", "due_on": "2026-01-14T00:00:00Z"}]`)
-	case strings.HasPrefix(path, "/repos/owner/repo/milestones/"):
+	case path == "/repos/owner/repo/milestones" && r.Method == "POST":
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		title, _ := body["title"].(string)
+		fmt.Fprintf(w, `{"id": 10, "title": %q, "state": "open"}`, title)
+	case strings.HasPrefix(path, "/repos/owner/repo/milestones/") && r.Method == "PATCH":
+		fmt.Fprint(w, `{"id": 5, "title": "Renamed", "state": "closed"}`)
+	case strings.HasPrefix(path, "/repos/owner/repo/milestones/") && r.Method == "GET":
 		fmt.Fprint(w, milestoneJSON)
+	case path == "/repos/owner/repo/actions/runs" && r.Method == "GET":
+		fmt.Fprint(w, `{"workflow_runs": [{"id": 100, "status": "success", "conclusion": "success", "head_branch": "main", "head_sha": "abc123", "html_url": "https://gitea.example.com/owner/repo/actions/runs/100", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:05:00Z"}]}`)
+	case strings.HasPrefix(path, "/repos/owner/repo/actions/runs/") && strings.HasSuffix(path, "/rerun") && r.Method == "POST":
+		fmt.Fprint(w, `{"id": 300, "status": "queued", "conclusion": "", "head_branch": "main", "head_sha": "abc123", "html_url": "https://gitea.example.com/owner/repo/actions/runs/300"}`)
+	case strings.HasPrefix(path, "/repos/owner/repo/actions/runs/") && strings.HasSuffix(path, "/jobs") && r.Method == "GET":
+		fmt.Fprint(w, `{"jobs": [{"id": 500, "name": "build", "status": "success", "conclusion": "success", "head_branch": "main", "html_url": "https://gitea.example.com/owner/repo/actions/runs/100/jobs/500", "started_at": "2026-01-01T00:00:00Z", "completed_at": "2026-01-01T00:02:00Z"}]}`)
+	case strings.HasPrefix(path, "/repos/owner/repo/actions/runs/") && strings.HasSuffix(path, "/artifacts") && r.Method == "GET":
+		fmt.Fprint(w, `{"artifacts": [{"id": 600, "name": "build-output", "size_in_bytes": 1024, "expired": false}]}`)
+	case strings.HasPrefix(path, "/repos/owner/repo/actions/artifacts/") && strings.HasSuffix(path, "/zip") && r.Method == "GET":
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write([]byte("PK\x03\x04fake-zip"))
+	case strings.HasPrefix(path, "/repos/owner/repo/actions/jobs/") && strings.HasSuffix(path, "/logs") && r.Method == "GET":
+		fmt.Fprint(w, "log line 1\nlog line 2\n")
+	case strings.HasPrefix(path, "/repos/owner/repo/actions/runs/") && r.Method == "GET":
+		// Single run by ID
+		fmt.Fprint(w, `{"id": 200, "status": "in_progress", "conclusion": "", "head_branch": "feature", "head_sha": "def456", "html_url": "https://gitea.example.com/owner/repo/actions/runs/200", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:05:00Z"}`)
+	case path == "/repos/owner/repo" && r.Method == "GET":
+		fmt.Fprint(w, `{"id": 99, "name": "repo", "full_name": "owner/repo", "description": "demo", "html_url": "https://gitea.example.com/owner/repo", "default_branch": "main", "open_issues_count": 3, "archived": false}`)
 	default:
 		t.Logf("unhandled %s %s", r.Method, path)
 		http.Error(w, "not found", http.StatusNotFound)
@@ -835,5 +863,301 @@ func TestGitea_ResolveGroup_Unsupported(t *testing.T) {
 
 	if _, err := g.ResolveGroup(context.Background(), "owner"); !errors.Is(err, provider.ErrUnsupported) {
 		t.Errorf("ResolveGroup err = %v; want ErrUnsupported", err)
+	}
+}
+
+func TestGitea_GetProject_DecodesResponse(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	p, err := g.GetProject(context.Background(), "owner/repo")
+	if err != nil {
+		t.Fatalf("GetProject: %v", err)
+	}
+	if p.ID != 99 || p.Name != "repo" || p.Path != "owner/repo" ||
+		p.FullName != "owner/repo" || p.Description != "demo" ||
+		p.WebURL != "https://gitea.example.com/owner/repo" ||
+		p.DefaultBranch != "main" || p.OpenIssuesCount != 3 || p.Archived {
+		t.Errorf("project = %+v", p)
+	}
+}
+
+func TestGitea_GetProject_RejectsBadProject(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	if _, err := g.GetProject(context.Background(), "no-slash"); err == nil {
+		t.Fatal("GetProject: expected error for malformed project, got nil")
+	}
+}
+
+func TestGitea_WorkItems_Unsupported(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	if _, err := g.ListWorkItems(context.Background(), "owner/repo", provider.ListWorkItemsOptions{}); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("ListWorkItems err = %v; want ErrUnsupported", err)
+	}
+	if _, err := g.CreateWorkItem(context.Background(), "owner/repo", provider.CreateWorkItemOptions{Title: "x"}); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("CreateWorkItem err = %v; want ErrUnsupported", err)
+	}
+	if err := g.CloseWorkItem(context.Background(), "owner/repo", 1); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("CloseWorkItem err = %v; want ErrUnsupported", err)
+	}
+}
+
+// ─── GetMilestone ─────────────────────────────────────────────────────────────
+
+func TestGitea_GetMilestone_DecodesResponse(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	m, err := g.GetMilestone(context.Background(), "owner/repo", 5)
+	if err != nil {
+		t.Fatalf("GetMilestone: %v", err)
+	}
+	if m.ID != 5 || m.Title != "v1.0" {
+		t.Errorf("milestone = %+v", m)
+	}
+}
+
+func TestGitea_GetMilestone_RejectsBadProject(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	if _, err := g.GetMilestone(context.Background(), "no-slash", 1); err == nil {
+		t.Fatal("GetMilestone: expected error for malformed project, got nil")
+	}
+}
+
+// ─── CreateMilestone ──────────────────────────────────────────────────────────
+
+func TestGitea_CreateMilestone_SendsTitle(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	m, err := g.CreateMilestone(context.Background(), "owner/repo", provider.CreateMilestoneOptions{
+		Title:       "Sprint 2",
+		Description: "second sprint",
+		DueDate:     "2026-04-14",
+	})
+	if err != nil {
+		t.Fatalf("CreateMilestone: %v", err)
+	}
+	if m.ID != 10 || m.Title != "Sprint 2" {
+		t.Errorf("milestone = %+v", m)
+	}
+}
+
+func TestGitea_CreateMilestone_RejectsBadDueDate(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	if _, err := g.CreateMilestone(context.Background(), "owner/repo", provider.CreateMilestoneOptions{
+		Title:   "x",
+		DueDate: "not-a-date",
+	}); err == nil {
+		t.Fatal("CreateMilestone: expected error for bad due date, got nil")
+	}
+}
+
+// ─── UpdateMilestone ──────────────────────────────────────────────────────────
+
+func TestGitea_UpdateMilestone_SendsTitleAndState(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	title := "Renamed"
+	state := "close"
+	m, err := g.UpdateMilestone(context.Background(), "owner/repo", 5, provider.UpdateMilestoneOptions{
+		Title: &title,
+		State: &state,
+	})
+	if err != nil {
+		t.Fatalf("UpdateMilestone: %v", err)
+	}
+	if m.ID != 5 || m.Title != "Renamed" || m.State != "closed" {
+		t.Errorf("milestone = %+v", m)
+	}
+}
+
+// ─── Epic stubs (unsupported) ─────────────────────────────────────────────────
+
+func TestGitea_LinkIssueToEpic_Unsupported(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	if err := g.LinkIssueToEpic(context.Background(), 1, 2, 3); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("LinkIssueToEpic err = %v; want ErrUnsupported", err)
+	}
+}
+
+func TestGitea_UpdateGroupEpic_Unsupported(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	if _, err := g.UpdateGroupEpic(context.Background(), 1, 2, provider.UpdateEpicOptions{}); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("UpdateGroupEpic err = %v; want ErrUnsupported", err)
+	}
+}
+
+func TestGitea_ListEpicIssues_Unsupported(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	if _, err := g.ListEpicIssues(context.Background(), 1, 2); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("ListEpicIssues err = %v; want ErrUnsupported", err)
+	}
+}
+
+// ─── ListPipelines ────────────────────────────────────────────────────────────
+
+func TestGitea_ListPipelines_DecodesResponse(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	pipes, err := g.ListPipelines(context.Background(), "owner/repo", provider.ListPipelinesOptions{
+		Page: 1, PerPage: 20,
+	})
+	if err != nil {
+		t.Fatalf("ListPipelines: %v", err)
+	}
+	if len(pipes) != 1 {
+		t.Fatalf("pipelines len = %d; want 1", len(pipes))
+	}
+	if pipes[0].ID != 100 || pipes[0].Status != "success" || pipes[0].Ref != "main" {
+		t.Errorf("pipeline = %+v", pipes[0])
+	}
+}
+
+func TestGitea_ListPipelines_RejectsBadProject(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	if _, err := g.ListPipelines(context.Background(), "no-slash", provider.ListPipelinesOptions{}); err == nil {
+		t.Fatal("ListPipelines: expected error for malformed project, got nil")
+	}
+}
+
+// ─── GetPipeline ──────────────────────────────────────────────────────────────
+
+func TestGitea_GetPipeline_DecodesResponse(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	p, err := g.GetPipeline(context.Background(), "owner/repo", 200)
+	if err != nil {
+		t.Fatalf("GetPipeline: %v", err)
+	}
+	if p.ID != 200 || p.Status != "running" || p.Ref != "feature" {
+		t.Errorf("pipeline = %+v", p)
+	}
+}
+
+// ─── RunPipeline (unsupported) ────────────────────────────────────────────────
+
+func TestGitea_RunPipeline_Unsupported(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	if _, err := g.RunPipeline(context.Background(), "owner/repo", provider.RunPipelineOptions{}); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("RunPipeline err = %v; want ErrUnsupported", err)
+	}
+}
+
+// ─── RetryPipeline ────────────────────────────────────────────────────────────
+
+func TestGitea_RetryPipeline_RerunsAndFetches(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	p, err := g.RetryPipeline(context.Background(), "owner/repo", 300)
+	if err != nil {
+		t.Fatalf("RetryPipeline: %v", err)
+	}
+	if p.ID != 300 || p.Status != "pending" {
+		t.Errorf("pipeline = %+v", p)
+	}
+}
+
+// ─── CancelPipeline (unsupported) ─────────────────────────────────────────────
+
+func TestGitea_CancelPipeline_Unsupported(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	if err := g.CancelPipeline(context.Background(), "owner/repo", 400); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("CancelPipeline err = %v; want ErrUnsupported", err)
+	}
+}
+
+// ─── ListPipelineJobs ─────────────────────────────────────────────────────────
+
+func TestGitea_ListPipelineJobs_DecodesResponse(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	jobs, err := g.ListPipelineJobs(context.Background(), "owner/repo", 100)
+	if err != nil {
+		t.Fatalf("ListPipelineJobs: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("jobs len = %d; want 1", len(jobs))
+	}
+	if jobs[0].ID != 500 || jobs[0].Name != "build" || jobs[0].Status != "success" {
+		t.Errorf("job = %+v", jobs[0])
+	}
+}
+
+// ─── GetJobLogs ───────────────────────────────────────────────────────────────
+
+func TestGitea_GetJobLogs_ReturnsContent(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	logs, err := g.GetJobLogs(context.Background(), "owner/repo", 500)
+	if err != nil {
+		t.Fatalf("GetJobLogs: %v", err)
+	}
+	if !strings.Contains(logs, "log line 1") {
+		t.Errorf("logs = %q; want to contain 'log line 1'", logs)
+	}
+}
+
+// ─── ListArtifacts ────────────────────────────────────────────────────────────
+
+func TestGitea_ListArtifacts_DecodesResponse(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	arts, err := g.ListArtifacts(context.Background(), "owner/repo", 100)
+	if err != nil {
+		t.Fatalf("ListArtifacts: %v", err)
+	}
+	if len(arts) != 1 {
+		t.Fatalf("artifacts len = %d; want 1", len(arts))
+	}
+	if arts[0].Name != "build-output" || arts[0].Size != 1024 || arts[0].Expired {
+		t.Errorf("artifact = %+v", arts[0])
+	}
+}
+
+// ─── DownloadArtifact ─────────────────────────────────────────────────────────
+
+func TestGitea_DownloadArtifact_WritesZip(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	dest := t.TempDir()
+	if err := g.DownloadArtifact(context.Background(), "owner/repo", 600, dest); err != nil {
+		t.Fatalf("DownloadArtifact: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dest, "artifact.zip"))
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if !strings.HasPrefix(string(data), "PK") {
+		t.Errorf("file content = %q; want zip starting with PK", string(data))
 	}
 }

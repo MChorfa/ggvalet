@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -613,6 +615,50 @@ func (g *Gitea) ListUsers(ctx context.Context, opts provider.ListUsersOptions) (
 	return result, nil
 }
 
+// ─── Project surface ──────────────────────────────────────────────────────────
+
+// GetProject fetches repository metadata via the Gitea repo API.
+func (g *Gitea) GetProject(ctx context.Context, project string) (provider.Project, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return provider.Project{}, err
+	}
+	r, _, err := g.client.GetRepo(ctx, owner, repo)
+	if err != nil {
+		return provider.Project{}, fmt.Errorf("gitea get project: %w", err)
+	}
+	openIssues := r.OpenIssues
+	archived := r.Archived
+	return provider.Project{
+		ID:              int(r.ID),
+		Name:            r.Name,
+		Path:            r.FullName,
+		FullName:        r.FullName,
+		Description:     r.Description,
+		WebURL:          r.HTMLURL,
+		DefaultBranch:   r.DefaultBranch,
+		OpenIssuesCount: openIssues,
+		Archived:        archived,
+	}, nil
+}
+
+// ─── Work item surface (unsupported on Gitea) ─────────────────────────────────
+
+// ListWorkItems returns ErrUnsupported on Gitea (no first-class work items).
+func (g *Gitea) ListWorkItems(context.Context, string, provider.ListWorkItemsOptions) ([]provider.WorkItem, error) {
+	return nil, fmt.Errorf("gitea work items: %w", provider.ErrUnsupported)
+}
+
+// CreateWorkItem returns ErrUnsupported on Gitea.
+func (g *Gitea) CreateWorkItem(context.Context, string, provider.CreateWorkItemOptions) (provider.WorkItem, error) {
+	return provider.WorkItem{}, fmt.Errorf("gitea work items: %w", provider.ErrUnsupported)
+}
+
+// CloseWorkItem returns ErrUnsupported on Gitea.
+func (g *Gitea) CloseWorkItem(context.Context, string, int) error {
+	return fmt.Errorf("gitea work items: %w", provider.ErrUnsupported)
+}
+
 // ─── Group milestone / epic surface (unsupported on Gitea) ────────────────────
 
 // CreateGroupMilestone is unsupported: Gitea milestones are repo-scoped.
@@ -664,6 +710,19 @@ func (g *Gitea) ListMilestones(ctx context.Context, project string, opts provide
 	return result, nil
 }
 
+// GetMilestone returns a single repo-scoped milestone by ID.
+func (g *Gitea) GetMilestone(ctx context.Context, project string, id int) (provider.Milestone, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return provider.Milestone{}, err
+	}
+	m, _, err := g.client.GetMilestone(ctx, owner, repo, int64(id))
+	if err != nil {
+		return provider.Milestone{}, fmt.Errorf("gitea get milestone: %w", err)
+	}
+	return giteaMilestone(m), nil
+}
+
 // ResolveGroup is unsupported on Gitea — the adapter does not implement
 // group-epic/group-milestone surfaces.
 func (g *Gitea) ResolveGroup(_ context.Context, _ string) (int, error) {
@@ -683,6 +742,328 @@ func (g *Gitea) ListGroupEpics(_ context.Context, _ int, _ provider.ListGroupEpi
 // LinkIssueToEpic is unsupported because Gitea has no first-class epic relation.
 func (g *Gitea) LinkIssueToEpic(_ context.Context, _, _, _ int) error {
 	return provider.ErrUnsupported
+}
+
+// UpdateGroupEpic is unsupported: Gitea has no first-class epic concept.
+func (g *Gitea) UpdateGroupEpic(_ context.Context, _ int, _ int, _ provider.UpdateEpicOptions) (provider.Epic, error) {
+	return provider.Epic{}, provider.ErrUnsupported
+}
+
+// ListEpicIssues is unsupported: Gitea has no first-class epic relation.
+func (g *Gitea) ListEpicIssues(_ context.Context, _ int, _ int) ([]provider.Issue, error) {
+	return nil, provider.ErrUnsupported
+}
+
+// CreateMilestone creates a new repo-scoped milestone on Gitea.
+func (g *Gitea) CreateMilestone(ctx context.Context, project string, opts provider.CreateMilestoneOptions) (provider.Milestone, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return provider.Milestone{}, err
+	}
+	giteaOpts := giteasdk.CreateMilestoneOption{
+		Title:       opts.Title,
+		Description: opts.Description,
+	}
+	if opts.DueDate != "" {
+		t, err := time.Parse("2006-01-02", opts.DueDate)
+		if err != nil {
+			return provider.Milestone{}, fmt.Errorf("gitea create milestone: invalid due date: %w", err)
+		}
+		giteaOpts.Deadline = &t
+	}
+	// Gitea milestones only have a due date, not a start date; StartDate is ignored.
+
+	m, _, err := g.client.CreateMilestone(ctx, owner, repo, giteaOpts)
+	if err != nil {
+		return provider.Milestone{}, fmt.Errorf("gitea create milestone: %w", err)
+	}
+	return giteaMilestone(m), nil
+}
+
+// UpdateMilestone updates an existing repo-scoped milestone on Gitea.
+func (g *Gitea) UpdateMilestone(ctx context.Context, project string, id int, opts provider.UpdateMilestoneOptions) (provider.Milestone, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return provider.Milestone{}, err
+	}
+	giteaOpts := giteasdk.EditMilestoneOption{}
+	if opts.Title != nil {
+		giteaOpts.Title = *opts.Title
+	}
+	if opts.Description != nil {
+		giteaOpts.Description = opts.Description
+	}
+	if opts.State != nil {
+		// Gitea uses "open" | "closed"; neutral is "active" | "closed"
+		state := giteasdk.StateOpen
+		switch *opts.State {
+		case "closed", "close":
+			state = giteasdk.StateClosed
+		case "active", "open", "opened":
+			state = giteasdk.StateOpen
+		}
+		giteaOpts.State = &state
+	}
+
+	m, _, err := g.client.EditMilestone(ctx, owner, repo, int64(id), giteaOpts)
+	if err != nil {
+		return provider.Milestone{}, fmt.Errorf("gitea update milestone: %w", err)
+	}
+	return giteaMilestone(m), nil
+}
+
+// ─── CI/CD pipeline surface (Gitea Actions) ───────────────────────────────────
+
+// ListPipelines returns Gitea Actions workflow runs for the given repo.
+func (g *Gitea) ListPipelines(ctx context.Context, project string, opts provider.ListPipelinesOptions) ([]provider.Pipeline, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return nil, err
+	}
+	listOpts := giteasdk.ListRepoActionsRunsOptions{
+		ListOptions: giteasdk.ListOptions{Page: opts.Page, PageSize: opts.PerPage},
+	}
+	if opts.Status != "" && opts.Status != "all" {
+		listOpts.Status = giteaRunStatusFilter(opts.Status)
+	}
+	if opts.Ref != "" {
+		listOpts.Branch = opts.Ref
+	}
+	if opts.SHA != "" {
+		listOpts.HeadSHA = opts.SHA
+	}
+
+	runs, _, err := g.client.ListRepoActionRuns(ctx, owner, repo, listOpts)
+	if err != nil {
+		return nil, fmt.Errorf("gitea list workflow runs: %w", err)
+	}
+
+	result := make([]provider.Pipeline, len(runs.WorkflowRuns))
+	for i, r := range runs.WorkflowRuns {
+		result[i] = giteaPipeline(project, r)
+	}
+	return result, nil
+}
+
+// GetPipeline returns a single Gitea Actions workflow run.
+func (g *Gitea) GetPipeline(ctx context.Context, project string, id int) (provider.Pipeline, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return provider.Pipeline{}, err
+	}
+	run, _, err := g.client.GetRepoActionRun(ctx, owner, repo, int64(id))
+	if err != nil {
+		return provider.Pipeline{}, fmt.Errorf("gitea get workflow run: %w", err)
+	}
+	return giteaPipeline(project, run), nil
+}
+
+// RunPipeline triggers a Gitea Actions workflow via workflow_dispatch.
+// Gitea requires a workflow file name or ID; we return ErrUnsupported
+// since we can't know which workflow to trigger from a ref alone.
+func (g *Gitea) RunPipeline(ctx context.Context, project string, opts provider.RunPipelineOptions) (provider.Pipeline, error) {
+	_ = ctx
+	_ = project
+	_ = opts
+	return provider.Pipeline{}, fmt.Errorf("gitea run pipeline: workflow_dispatch requires a workflow file name: %w", provider.ErrUnsupported)
+}
+
+// RetryPipeline reruns a Gitea Actions workflow run.
+func (g *Gitea) RetryPipeline(ctx context.Context, project string, id int) (provider.Pipeline, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return provider.Pipeline{}, err
+	}
+	run, _, err := g.client.RerunRepoActionRun(ctx, owner, repo, int64(id))
+	if err != nil {
+		return provider.Pipeline{}, fmt.Errorf("gitea retry workflow run: %w", err)
+	}
+	return giteaPipeline(project, run), nil
+}
+
+// CancelPipeline cancels a running Gitea Actions workflow run.
+// The Gitea SDK v1.2.0 does not expose a cancel endpoint; we return ErrUnsupported.
+func (g *Gitea) CancelPipeline(ctx context.Context, project string, id int) error {
+	_ = ctx
+	_ = project
+	_ = id
+	return fmt.Errorf("gitea cancel pipeline: not supported by SDK v1.2.0: %w", provider.ErrUnsupported)
+}
+
+// ListPipelineJobs returns jobs for a Gitea Actions workflow run.
+func (g *Gitea) ListPipelineJobs(ctx context.Context, project string, pipelineID int) ([]provider.Job, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return nil, err
+	}
+	jobs, _, err := g.client.ListRepoActionRunJobs(ctx, owner, repo, int64(pipelineID), giteasdk.ListRepoActionsJobsOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("gitea list workflow jobs: %w", err)
+	}
+
+	result := make([]provider.Job, len(jobs.Jobs))
+	for i, j := range jobs.Jobs {
+		result[i] = giteaJob(j)
+	}
+	return result, nil
+}
+
+// GetJobLogs returns the log output for a single Gitea Actions job.
+func (g *Gitea) GetJobLogs(ctx context.Context, project string, jobID int) (string, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return "", err
+	}
+	b, _, err := g.client.GetRepoActionJobLogs(ctx, owner, repo, int64(jobID))
+	if err != nil {
+		return "", fmt.Errorf("gitea get job logs: %w", err)
+	}
+	return string(b), nil
+}
+
+// ListArtifacts returns artifacts for a Gitea Actions workflow run.
+func (g *Gitea) ListArtifacts(ctx context.Context, project string, pipelineID int) ([]provider.Artifact, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return nil, err
+	}
+	artifacts, _, err := g.client.ListRepoActionRunArtifacts(ctx, owner, repo, int64(pipelineID), giteasdk.ListActionsArtifactsOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("gitea list artifacts: %w", err)
+	}
+
+	result := make([]provider.Artifact, len(artifacts.Artifacts))
+	for i, a := range artifacts.Artifacts {
+		result[i] = provider.Artifact{
+			Name:    a.Name,
+			Size:    a.SizeInBytes,
+			Expired: a.Expired,
+		}
+	}
+	return result, nil
+}
+
+// DownloadArtifact downloads a single Gitea Actions artifact to destDir.
+func (g *Gitea) DownloadArtifact(ctx context.Context, project string, artifactID int, destDir string) error {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return err
+	}
+	b, _, err := g.client.GetRepoActionArtifactArchive(ctx, owner, repo, int64(artifactID))
+	if err != nil {
+		return fmt.Errorf("gitea download artifact: %w", err)
+	}
+	dest := filepath.Join(destDir, "artifact.zip")
+	if err := os.WriteFile(dest, b, 0o644); err != nil {
+		return fmt.Errorf("gitea download artifact: write file: %w", err)
+	}
+	return nil
+}
+
+// ─── Gitea CI/CD conversion helpers ───────────────────────────────────────────
+
+func giteaPipeline(project string, r *giteasdk.ActionsWorkflowRun) provider.Pipeline {
+	out := provider.Pipeline{
+		ID:        int(r.ID),
+		IID:       int(r.ID),
+		Project:   project,
+		Status:    giteaRunStatus(r.Status, r.Conclusion),
+		Ref:       r.HeadBranch,
+		SHA:       r.HeadSha,
+		WebURL:    r.HTMLURL,
+		CreatedAt: r.StartedAt,
+		UpdatedAt: r.CompletedAt,
+	}
+	if r.Actor != nil {
+		out.Author = provider.User{
+			ID:       int(r.Actor.ID),
+			Username: r.Actor.UserName,
+			Name:     r.Actor.FullName,
+			WebURL:   r.Actor.HTMLURL,
+		}
+	}
+	if !r.CompletedAt.IsZero() {
+		t := r.CompletedAt
+		out.FinishedAt = &t
+	}
+	return out
+}
+
+func giteaJob(j *giteasdk.ActionsWorkflowJob) provider.Job {
+	out := provider.Job{
+		ID:     int(j.ID),
+		Name:   j.Name,
+		Status: giteaRunStatus(j.Status, j.Conclusion),
+		Ref:    j.HeadBranch,
+		WebURL: j.HTMLURL,
+	}
+	if !j.StartedAt.IsZero() {
+		t := j.StartedAt
+		out.StartedAt = &t
+	}
+	if !j.CompletedAt.IsZero() {
+		t := j.CompletedAt
+		out.FinishedAt = &t
+	}
+	return out
+}
+
+// giteaRunStatus maps Gitea Actions status + conclusion to a neutral status.
+func giteaRunStatus(status, conclusion string) string {
+	if status == "completed" {
+		switch conclusion {
+		case "success":
+			return "success"
+		case "failure":
+			return "failed"
+		case "cancelled":
+			return "canceled"
+		case "skipped":
+			return "skipped"
+		default:
+			return conclusion
+		}
+	}
+	switch status {
+	case "in_progress":
+		return "running"
+	case "queued", "waiting":
+		return "pending"
+	default:
+		return status
+	}
+}
+
+// giteaRunStatusFilter maps a neutral status to a Gitea filter status.
+func giteaRunStatusFilter(status string) string {
+	switch status {
+	case "running":
+		return "in_progress"
+	case "pending":
+		return "queued"
+	case "success":
+		return "success"
+	case "failed":
+		return "failure"
+	case "canceled":
+		return "cancelled"
+	default:
+		return status
+	}
+}
+
+func giteaMilestone(m *giteasdk.Milestone) provider.Milestone {
+	out := provider.Milestone{
+		ID:          int(m.ID),
+		IID:         int(m.ID),
+		Title:       m.Title,
+		Description: m.Description,
+		State:       string(m.State),
+	}
+	if m.Deadline != nil {
+		out.DueDate = m.Deadline.Format("2006-01-02")
+	}
+	return out
 }
 
 // ─── internal helpers ─────────────────────────────────────────────────────────

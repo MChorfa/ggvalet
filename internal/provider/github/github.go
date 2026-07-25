@@ -10,9 +10,11 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -320,6 +322,72 @@ func (g *GitHub) ListUsers(ctx context.Context, opts provider.ListUsersOptions) 
 	return result, nil
 }
 
+// GetProject fetches repository metadata via the GitHub repos API.
+func (g *GitHub) GetProject(ctx context.Context, project string) (provider.Project, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return provider.Project{}, err
+	}
+	r, _, err := g.client.Repositories.Get(ctx, owner, repo)
+	if err != nil {
+		return provider.Project{}, fmt.Errorf("github get project: %w", err)
+	}
+	openIssues := 0
+	if r.OpenIssues != nil {
+		openIssues = int(*r.OpenIssues)
+	}
+	name := ""
+	if r.Name != nil {
+		name = *r.Name
+	}
+	fullName := ""
+	if r.FullName != nil {
+		fullName = *r.FullName
+	}
+	desc := ""
+	if r.Description != nil {
+		desc = *r.Description
+	}
+	webURL := ""
+	if r.HTMLURL != nil {
+		webURL = *r.HTMLURL
+	}
+	defaultBranch := ""
+	if r.DefaultBranch != nil {
+		defaultBranch = *r.DefaultBranch
+	}
+	archived := false
+	if r.Archived != nil {
+		archived = *r.Archived
+	}
+	return provider.Project{
+		ID:              int(r.GetID()),
+		Name:            name,
+		Path:            fullName,
+		FullName:        fullName,
+		Description:     desc,
+		WebURL:          webURL,
+		DefaultBranch:   defaultBranch,
+		OpenIssuesCount: openIssues,
+		Archived:        archived,
+	}, nil
+}
+
+// ListWorkItems returns ErrUnsupported on GitHub (no first-class work items).
+func (g *GitHub) ListWorkItems(context.Context, string, provider.ListWorkItemsOptions) ([]provider.WorkItem, error) {
+	return nil, fmt.Errorf("github work items: %w", provider.ErrUnsupported)
+}
+
+// CreateWorkItem returns ErrUnsupported on GitHub.
+func (g *GitHub) CreateWorkItem(context.Context, string, provider.CreateWorkItemOptions) (provider.WorkItem, error) {
+	return provider.WorkItem{}, fmt.Errorf("github work items: %w", provider.ErrUnsupported)
+}
+
+// CloseWorkItem returns ErrUnsupported on GitHub.
+func (g *GitHub) CloseWorkItem(context.Context, string, int) error {
+	return fmt.Errorf("github work items: %w", provider.ErrUnsupported)
+}
+
 // ListMergeRequests lists pull requests for the given owner/repo project.
 func (g *GitHub) ListMergeRequests(ctx context.Context, project string, opts provider.ListMergeRequestsOptions) ([]provider.MergeRequest, error) {
 	owner, repo, err := splitProject(project)
@@ -620,6 +688,19 @@ func (g *GitHub) ListMilestones(ctx context.Context, project string, opts provid
 	return result, nil
 }
 
+// GetMilestone returns a single repo-scoped milestone by number.
+func (g *GitHub) GetMilestone(ctx context.Context, project string, id int) (provider.Milestone, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return provider.Milestone{}, err
+	}
+	m, _, err := g.client.Issues.GetMilestone(ctx, owner, repo, id)
+	if err != nil {
+		return provider.Milestone{}, fmt.Errorf("github get milestone: %w", err)
+	}
+	return ghMilestone(m), nil
+}
+
 // ResolveGroup is unsupported on GitHub — orgs have numeric IDs but the
 // GitHub adapter does not implement group-epic/group-milestone surfaces.
 func (g *GitHub) ResolveGroup(_ context.Context, _ string) (int, error) {
@@ -634,6 +715,343 @@ func (g *GitHub) ListGroupEpics(_ context.Context, _ int, _ provider.ListGroupEp
 // LinkIssueToEpic is unsupported because GitHub has no first-class epic relation.
 func (g *GitHub) LinkIssueToEpic(_ context.Context, _, _, _ int) error {
 	return provider.ErrUnsupported
+}
+
+// UpdateGroupEpic is unsupported on GitHub (no first-class epic concept).
+func (g *GitHub) UpdateGroupEpic(_ context.Context, _ int, _ int, _ provider.UpdateEpicOptions) (provider.Epic, error) {
+	return provider.Epic{}, provider.ErrUnsupported
+}
+
+// ListEpicIssues is unsupported on GitHub (no first-class epic relation).
+func (g *GitHub) ListEpicIssues(_ context.Context, _ int, _ int) ([]provider.Issue, error) {
+	return nil, provider.ErrUnsupported
+}
+
+// CreateMilestone creates a new repo-scoped milestone on GitHub.
+func (g *GitHub) CreateMilestone(ctx context.Context, project string, opts provider.CreateMilestoneOptions) (provider.Milestone, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return provider.Milestone{}, err
+	}
+	ghReq := &gh.Milestone{
+		Title:       gh.String(opts.Title),
+		Description: gh.String(opts.Description),
+	}
+	if opts.DueDate != "" {
+		t, err := time.Parse("2006-01-02", opts.DueDate)
+		if err != nil {
+			return provider.Milestone{}, fmt.Errorf("github create milestone: invalid due date: %w", err)
+		}
+		ghReq.DueOn = &gh.Timestamp{Time: t}
+	}
+	// GitHub milestones only have a due date, not a start date; StartDate is ignored.
+
+	m, _, err := g.client.Issues.CreateMilestone(ctx, owner, repo, ghReq)
+	if err != nil {
+		return provider.Milestone{}, fmt.Errorf("github create milestone: %w", err)
+	}
+	return ghMilestone(m), nil
+}
+
+// UpdateMilestone updates an existing repo-scoped milestone on GitHub.
+func (g *GitHub) UpdateMilestone(ctx context.Context, project string, id int, opts provider.UpdateMilestoneOptions) (provider.Milestone, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return provider.Milestone{}, err
+	}
+	ghReq := &gh.Milestone{}
+	if opts.Title != nil {
+		ghReq.Title = gh.String(*opts.Title)
+	}
+	if opts.Description != nil {
+		ghReq.Description = gh.String(*opts.Description)
+	}
+	if opts.State != nil {
+		// GitHub uses "open" | "closed"; neutral is "active" | "closed"
+		state := *opts.State
+		if state == "active" {
+			state = "open"
+		}
+		if state == "close" || state == "closed" {
+			state = "closed"
+		}
+		ghReq.State = gh.String(state)
+	}
+
+	m, _, err := g.client.Issues.EditMilestone(ctx, owner, repo, id, ghReq)
+	if err != nil {
+		return provider.Milestone{}, fmt.Errorf("github update milestone: %w", err)
+	}
+	return ghMilestone(m), nil
+}
+
+// ─── CI/CD pipeline surface (GitHub Actions) ──────────────────────────────────
+
+// ListPipelines returns GitHub Actions workflow runs for the given repo.
+// On GitHub, a "pipeline" maps to a workflow run.
+func (g *GitHub) ListPipelines(ctx context.Context, project string, opts provider.ListPipelinesOptions) ([]provider.Pipeline, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return nil, err
+	}
+	listOpts := &gh.ListWorkflowRunsOptions{
+		ListOptions: gh.ListOptions{Page: opts.Page, PerPage: opts.PerPage},
+	}
+	if opts.Status != "" && opts.Status != "all" {
+		// Map neutral statuses to GitHub statuses
+		statusMap := map[string]string{
+			"running":  "in_progress",
+			"pending":  "queued",
+			"success":  "success",
+			"failed":   "failure",
+			"canceled": "cancelled",
+		}
+		if ghStatus, ok := statusMap[opts.Status]; ok {
+			listOpts.Status = ghStatus
+		}
+	}
+	if opts.Ref != "" {
+		listOpts.Branch = opts.Ref
+	}
+
+	runs, _, err := g.client.Actions.ListRepositoryWorkflowRuns(ctx, owner, repo, listOpts)
+	if err != nil {
+		return nil, fmt.Errorf("github list workflow runs: %w", err)
+	}
+
+	result := make([]provider.Pipeline, len(runs.WorkflowRuns))
+	for i, r := range runs.WorkflowRuns {
+		result[i] = ghPipeline(project, r)
+	}
+	return result, nil
+}
+
+// GetPipeline returns a single GitHub Actions workflow run.
+func (g *GitHub) GetPipeline(ctx context.Context, project string, id int) (provider.Pipeline, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return provider.Pipeline{}, err
+	}
+	run, _, err := g.client.Actions.GetWorkflowRunByID(ctx, owner, repo, int64(id))
+	if err != nil {
+		return provider.Pipeline{}, fmt.Errorf("github get workflow run: %w", err)
+	}
+	return ghPipeline(project, run), nil
+}
+
+// RunPipeline triggers a GitHub Actions workflow via workflow_dispatch.
+// On GitHub, this requires the workflow file to support workflow_dispatch.
+func (g *GitHub) RunPipeline(ctx context.Context, project string, opts provider.RunPipelineOptions) (provider.Pipeline, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return provider.Pipeline{}, err
+	}
+	// GitHub requires a workflow file name or ID; we use the ref to trigger
+	// all workflows on that ref via repository_dispatch as a best-effort.
+	// A true workflow_dispatch requires knowing the workflow file name.
+	// We use CreateWorkflowDispatchEvent on the default workflow if available.
+	// For now, we return ErrUnsupported since we can't know which workflow to trigger.
+	_ = owner
+	_ = repo
+	_ = opts
+	return provider.Pipeline{}, fmt.Errorf("github run pipeline: workflow_dispatch requires a workflow file name; use 'gh workflow run' directly: %w", provider.ErrUnsupported)
+}
+
+// RetryPipeline reruns a failed GitHub Actions workflow run.
+func (g *GitHub) RetryPipeline(ctx context.Context, project string, id int) (provider.Pipeline, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return provider.Pipeline{}, err
+	}
+	_, err = g.client.Actions.RerunWorkflowByID(ctx, owner, repo, int64(id))
+	if err != nil {
+		return provider.Pipeline{}, fmt.Errorf("github retry workflow run: %w", err)
+	}
+	// Return the updated run
+	return g.GetPipeline(ctx, project, id)
+}
+
+// CancelPipeline cancels a running GitHub Actions workflow run.
+func (g *GitHub) CancelPipeline(ctx context.Context, project string, id int) error {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return err
+	}
+	_, err = g.client.Actions.CancelWorkflowRunByID(ctx, owner, repo, int64(id))
+	if err != nil {
+		return fmt.Errorf("github cancel workflow run: %w", err)
+	}
+	return nil
+}
+
+// ListPipelineJobs returns jobs (steps) for a GitHub Actions workflow run.
+func (g *GitHub) ListPipelineJobs(ctx context.Context, project string, pipelineID int) ([]provider.Job, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return nil, err
+	}
+	jobs, _, err := g.client.Actions.ListWorkflowJobs(ctx, owner, repo, int64(pipelineID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("github list workflow jobs: %w", err)
+	}
+
+	result := make([]provider.Job, len(jobs.Jobs))
+	for i, j := range jobs.Jobs {
+		result[i] = ghJob(j)
+	}
+	return result, nil
+}
+
+// GetJobLogs returns the log output for a single GitHub Actions job.
+func (g *GitHub) GetJobLogs(ctx context.Context, project string, jobID int) (string, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return "", err
+	}
+	// GetWorkflowJobLogs returns a redirect URL to the logs archive.
+	logURL, _, err := g.client.Actions.GetWorkflowJobLogs(ctx, owner, repo, int64(jobID), 3)
+	if err != nil {
+		return "", fmt.Errorf("github get job logs: %w", err)
+	}
+	resp, err := http.Get(logURL.String())
+	if err != nil {
+		return "", fmt.Errorf("github get job logs: fetch: %w", err)
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("github read job logs: %w", err)
+	}
+	return string(b), nil
+}
+
+// ListArtifacts returns artifacts for a GitHub Actions workflow run.
+func (g *GitHub) ListArtifacts(ctx context.Context, project string, pipelineID int) ([]provider.Artifact, error) {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return nil, err
+	}
+	artifacts, _, err := g.client.Actions.ListWorkflowRunArtifacts(ctx, owner, repo, int64(pipelineID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("github list artifacts: %w", err)
+	}
+
+	result := make([]provider.Artifact, len(artifacts.Artifacts))
+	for i, a := range artifacts.Artifacts {
+		result[i] = provider.Artifact{
+			Name:    a.GetName(),
+			Size:    a.GetSizeInBytes(),
+			Expired: a.GetExpired(),
+		}
+	}
+	return result, nil
+}
+
+// DownloadArtifact downloads a single GitHub Actions artifact to destDir.
+func (g *GitHub) DownloadArtifact(ctx context.Context, project string, artifactID int, destDir string) error {
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return err
+	}
+	// GitHub returns a redirect URL for artifact download
+	url, _, err := g.client.Actions.DownloadArtifact(ctx, owner, repo, int64(artifactID), 3)
+	if err != nil {
+		return fmt.Errorf("github download artifact: %w", err)
+	}
+
+	resp, err := http.Get(url.String())
+	if err != nil {
+		return fmt.Errorf("github download artifact: fetch: %w", err)
+	}
+	defer resp.Body.Close()
+	dest := filepath.Join(destDir, "artifact.zip")
+	out, err := os.Create(dest)
+	if err != nil {
+		return fmt.Errorf("github download artifact: create file: %w", err)
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		return fmt.Errorf("github download artifact: write: %w", err)
+	}
+	return nil
+}
+
+// ─── GitHub CI/CD conversion helpers ──────────────────────────────────────────
+
+func ghPipeline(project string, r *gh.WorkflowRun) provider.Pipeline {
+	out := provider.Pipeline{
+		ID:        int(r.GetID()),
+		IID:       int(r.GetID()),
+		Project:   project,
+		Status:    ghRunStatus(r.GetStatus(), r.GetConclusion()),
+		Ref:       r.GetHeadBranch(),
+		SHA:       r.GetHeadSHA(),
+		WebURL:    r.GetHTMLURL(),
+		CreatedAt: r.GetCreatedAt().Time,
+		UpdatedAt: r.GetUpdatedAt().Time,
+	}
+	return out
+}
+
+func ghJob(j *gh.WorkflowJob) provider.Job {
+	out := provider.Job{
+		ID:     int(j.GetID()),
+		Name:   j.GetName(),
+		Status: ghRunStatus(j.GetStatus(), j.GetConclusion()),
+		Ref:    j.GetHeadBranch(),
+		WebURL: j.GetHTMLURL(),
+	}
+	if j.StartedAt != nil {
+		out.StartedAt = &j.StartedAt.Time
+	}
+	if j.CompletedAt != nil {
+		t := j.CompletedAt.Time
+		out.FinishedAt = &t
+	}
+	return out
+}
+
+// ghRunStatus maps GitHub Actions status + conclusion to a neutral status.
+func ghRunStatus(status, conclusion string) string {
+	if status == "completed" {
+		switch conclusion {
+		case "success":
+			return "success"
+		case "failure":
+			return "failed"
+		case "cancelled":
+			return "canceled"
+		case "skipped":
+			return "skipped"
+		case "neutral":
+			return "success"
+		default:
+			return conclusion
+		}
+	}
+	switch status {
+	case "in_progress":
+		return "running"
+	case "queued":
+		return "pending"
+	default:
+		return status
+	}
+}
+
+func ghMilestone(m *gh.Milestone) provider.Milestone {
+	out := provider.Milestone{
+		ID:          int(m.GetID()),
+		IID:         m.GetNumber(),
+		Title:       m.GetTitle(),
+		Description: m.GetDescription(),
+		State:       m.GetState(),
+		WebURL:      m.GetHTMLURL(),
+	}
+	if m.DueOn != nil {
+		out.DueDate = m.GetDueOn().Format("2006-01-02")
+	}
+	return out
 }
 
 // ─── conversion helpers ───────────────────────────────────────────────────────

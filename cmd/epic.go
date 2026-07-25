@@ -4,19 +4,18 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/MChorfa/ggvalet/internal/journal"
+	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
-	gl "github.com/xanzy/go-gitlab"
 )
 
 func epicCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "epic",
-		Short:   "Manage GitLab epics (group-level)",
+		Short:   "Manage group epics (GitLab-native; GitHub/Gitea unsupported)",
 		Aliases: []string{"e"},
 	}
 	cmd.AddCommand(
@@ -45,9 +44,15 @@ func epicListCmd() *cobra.Command {
 				return fmt.Errorf("--group required (or set GLVALET_DEFAULT_GROUP)")
 			}
 
-			epics, _, err := glClient.GL.Epics.ListGroupEpics(group, &gl.ListGroupEpicsOptions{
-				State:       gl.Ptr(state),
-				ListOptions: gl.ListOptions{PerPage: 50},
+			groupID, err := glClient.Provider.ResolveGroup(cmd.Context(), group)
+			if err != nil {
+				glClient.RecErr(journal.OpList, journal.EntityEpic, "", group, err.Error())
+				return fmt.Errorf("resolve group: %w", err)
+			}
+
+			epics, err := glClient.Provider.ListGroupEpics(cmd.Context(), groupID, provider.ListGroupEpicsOptions{
+				State:  state,
+				PerPage: 50,
 			})
 			if err != nil {
 				glClient.RecErr(journal.OpList, journal.EntityEpic, "", group, err.Error())
@@ -63,22 +68,14 @@ func epicListCmd() *cobra.Command {
 			table.SetAutoWrapText(false)
 
 			for _, ep := range epics {
-				start, due := "", ""
-				if ep.StartDate != nil {
-					start = ep.StartDate.String()
-				}
-				if ep.DueDate != nil {
-					due = ep.DueDate.String()
-				}
-				issues := "n/a"
 				table.Append([]string{
 					strconv.Itoa(ep.IID),
 					truncate(ep.Title, 55),
 					ep.State,
 					ep.Author.Username,
-					start,
-					due,
-					issues,
+					ep.StartDate,
+					ep.DueDate,
+					"n/a",
 				})
 			}
 			table.Render()
@@ -110,30 +107,34 @@ func epicCreateCmd() *cobra.Command {
 				return fmt.Errorf("--title required")
 			}
 
-			opts := &gl.CreateEpicOptions{
-				Title:       gl.Ptr(title),
-				Description: gl.Ptr(description),
-			}
-			if startDate != "" {
-				t, err := time.Parse("2006-01-02", startDate)
-				if err != nil {
-					return fmt.Errorf("invalid --start-date (YYYY-MM-DD)")
-				}
-				id := gl.ISOTime(t)
-				opts.StartDateFixed = &id
-				opts.StartDateIsFixed = gl.Ptr(true)
-			}
-			if dueDate != "" {
-				t, err := time.Parse("2006-01-02", dueDate)
-				if err != nil {
-					return fmt.Errorf("invalid --due-date (YYYY-MM-DD)")
-				}
-				dd := gl.ISOTime(t)
-				opts.DueDateFixed = &dd
-				opts.DueDateIsFixed = gl.Ptr(true)
+			groupID, err := glClient.Provider.ResolveGroup(cmd.Context(), group)
+			if err != nil {
+				glClient.RecErr(journal.OpCreate, journal.EntityEpic, "", group, err.Error())
+				return fmt.Errorf("resolve group: %w", err)
 			}
 
-			ep, _, err := glClient.GL.Epics.CreateEpic(group, opts)
+			opts := provider.CreateEpicOptions{
+				Title:       title,
+				Description: description,
+			}
+			// Note: the host-neutral CreateEpicOptions does not carry
+			// start/due dates because GitHub has no epic concept and Gitea
+			// has no first-class epic. Start/due dates remain GitLab-only
+			// for now; they are accepted as flags but ignored on the
+			// neutral surface. A future Provider extension can add them
+			// if a cross-host epic timeline emerges.
+			if startDate != "" {
+				if _, err := time.Parse("2006-01-02", startDate); err != nil {
+					return fmt.Errorf("invalid --start-date (YYYY-MM-DD)")
+				}
+			}
+			if dueDate != "" {
+				if _, err := time.Parse("2006-01-02", dueDate); err != nil {
+					return fmt.Errorf("invalid --due-date (YYYY-MM-DD)")
+				}
+			}
+
+			ep, err := glClient.Provider.CreateGroupEpic(cmd.Context(), groupID, opts)
 			if err != nil {
 				glClient.RecErr(journal.OpCreate, journal.EntityEpic, "", group, err.Error())
 				return fmt.Errorf("create epic: %w", err)
@@ -173,15 +174,21 @@ func epicUpdateCmd() *cobra.Command {
 				return fmt.Errorf("--iid required")
 			}
 
-			opts := &gl.UpdateEpicOptions{}
-			if title != "" {
-				opts.Title = gl.Ptr(title)
-			}
-			if description != "" {
-				opts.Description = gl.Ptr(description)
+			groupID, err := glClient.Provider.ResolveGroup(cmd.Context(), group)
+			if err != nil {
+				glClient.RecErr(journal.OpUpdate, journal.EntityEpic, "", group, err.Error())
+				return fmt.Errorf("resolve group: %w", err)
 			}
 
-			ep, _, err := glClient.GL.Epics.UpdateEpic(group, iid, opts)
+			opts := provider.UpdateEpicOptions{}
+			if title != "" {
+				opts.Title = &title
+			}
+			if description != "" {
+				opts.Description = &description
+			}
+
+			ep, err := glClient.Provider.UpdateGroupEpic(cmd.Context(), groupID, iid, opts)
 			if err != nil {
 				glClient.RecErr(journal.OpUpdate, journal.EntityEpic, "", group, err.Error())
 				return fmt.Errorf("update epic: %w", err)
@@ -220,8 +227,15 @@ func epicCloseCmd() *cobra.Command {
 				return fmt.Errorf("--iid required")
 			}
 
-			ep, _, err := glClient.GL.Epics.UpdateEpic(group, iid, &gl.UpdateEpicOptions{
-				StateEvent: gl.Ptr("close"),
+			groupID, err := glClient.Provider.ResolveGroup(cmd.Context(), group)
+			if err != nil {
+				glClient.RecErr(journal.OpClose, journal.EntityEpic, "", group, err.Error())
+				return fmt.Errorf("resolve group: %w", err)
+			}
+
+			closed := "close"
+			ep, err := glClient.Provider.UpdateGroupEpic(cmd.Context(), groupID, iid, provider.UpdateEpicOptions{
+				State: &closed,
 			})
 			if err != nil {
 				glClient.RecErr(journal.OpClose, journal.EntityEpic, "", group, err.Error())
@@ -259,7 +273,12 @@ func epicIssuesCmd() *cobra.Command {
 				return fmt.Errorf("--iid required")
 			}
 
-			issues, _, err := glClient.GL.EpicIssues.ListEpicIssues(group, iid, &gl.ListOptions{PerPage: 50})
+			groupID, err := glClient.Provider.ResolveGroup(cmd.Context(), group)
+			if err != nil {
+				return fmt.Errorf("resolve group: %w", err)
+			}
+
+			issues, err := glClient.Provider.ListEpicIssues(cmd.Context(), groupID, iid)
 			if err != nil {
 				return fmt.Errorf("list epic issues: %w", err)
 			}
@@ -268,14 +287,10 @@ func epicIssuesCmd() *cobra.Command {
 			table.SetHeader([]string{"IID", "Title", "Project", "State"})
 			table.SetBorder(false)
 			for _, iss := range issues {
-				proj := ""
-				if iss.References != nil {
-					proj = strings.Split(iss.References.Full, "#")[0]
-				}
 				table.Append([]string{
 					strconv.Itoa(iss.IID),
 					truncate(iss.Title, 55),
-					proj,
+					iss.Project,
 					iss.State,
 				})
 			}

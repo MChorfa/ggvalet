@@ -18,7 +18,6 @@ import (
 	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
-	gl "github.com/xanzy/go-gitlab"
 )
 
 func shieldsCmd() *cobra.Command {
@@ -50,8 +49,10 @@ func shieldsBadgeCmd() *cobra.Command {
 				return fmt.Errorf("--project required")
 			}
 
-			// Fetch project metadata
-			proj, _, err := glClient.GL.Projects.GetProject(project, &gl.GetProjectOptions{})
+			ctx := cmd.Context()
+
+			// Fetch project metadata via the host-neutral Provider surface.
+			proj, err := glClient.Provider.GetProject(ctx, project)
 			if err != nil {
 				return fmt.Errorf("get project: %w", err)
 			}
@@ -59,14 +60,13 @@ func shieldsBadgeCmd() *cobra.Command {
 			// Open issues count
 			openCount := proj.OpenIssuesCount
 
-			// Latest pipeline status
-			pipelines, _, _ := glClient.GL.Pipelines.ListProjectPipelines(project,
-				&gl.ListProjectPipelinesOptions{
-					ListOptions: gl.ListOptions{PerPage: 1},
-				})
+			// Latest pipeline status (best-effort; ignore ErrUnsupported)
 			pipelineStatus := "unknown"
 			pipelineColor := "lightgrey"
-			if len(pipelines) > 0 {
+			pipelines, perr := glClient.Provider.ListPipelines(ctx, project, provider.ListPipelinesOptions{
+				PerPage: 1,
+			})
+			if perr == nil && len(pipelines) > 0 {
 				pipelineStatus = pipelines[0].Status
 				switch pipelineStatus {
 				case "success":
@@ -80,14 +80,13 @@ func shieldsBadgeCmd() *cobra.Command {
 				}
 			}
 
-			// Active milestone progress
+			// Active milestone progress (best-effort; ignore ErrUnsupported)
 			msText, msColor := "none", "lightgrey"
-			milestones, _, _ := glClient.GL.Milestones.ListMilestones(project,
-				&gl.ListMilestonesOptions{
-					State:       gl.Ptr("active"),
-					ListOptions: gl.ListOptions{PerPage: 1},
-				})
-			if len(milestones) > 0 {
+			milestones, merr := glClient.Provider.ListMilestones(ctx, project, provider.ListMilestonesOptions{
+				State:   "active",
+				PerPage: 1,
+			})
+			if merr == nil && len(milestones) > 0 {
 				ms := milestones[0]
 				msText = fmt.Sprintf("%s_unavailable", strings.ReplaceAll(ms.Title, " ", "_"))
 				msColor = "lightgrey"

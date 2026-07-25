@@ -87,6 +87,22 @@ func (t *testProvider) ListUsers(ctx context.Context, opts provider.ListUsersOpt
 	return nil, provider.ErrUnsupported
 }
 
+func (t *testProvider) GetProject(_ context.Context, _ string) (provider.Project, error) {
+	return provider.Project{}, provider.ErrUnsupported
+}
+
+func (t *testProvider) ListWorkItems(_ context.Context, _ string, _ provider.ListWorkItemsOptions) ([]provider.WorkItem, error) {
+	return nil, provider.ErrUnsupported
+}
+
+func (t *testProvider) CreateWorkItem(_ context.Context, _ string, _ provider.CreateWorkItemOptions) (provider.WorkItem, error) {
+	return provider.WorkItem{}, provider.ErrUnsupported
+}
+
+func (t *testProvider) CloseWorkItem(_ context.Context, _ string, _ int) error {
+	return provider.ErrUnsupported
+}
+
 func (t *testProvider) ListMergeRequests(ctx context.Context, project string, opts provider.ListMergeRequestsOptions) ([]provider.MergeRequest, error) {
 	return nil, provider.ErrUnsupported
 }
@@ -159,8 +175,64 @@ func (t *testProvider) ListMilestones(_ context.Context, _ string, _ provider.Li
 	return nil, provider.ErrUnsupported
 }
 
+func (t *testProvider) GetMilestone(_ context.Context, _ string, _ int) (provider.Milestone, error) {
+	return provider.Milestone{}, provider.ErrUnsupported
+}
+
 func (t *testProvider) ResolveGroup(_ context.Context, _ string) (int, error) {
 	return 0, provider.ErrUnsupported
+}
+
+func (t *testProvider) UpdateGroupEpic(_ context.Context, _ int, _ int, _ provider.UpdateEpicOptions) (provider.Epic, error) {
+	return provider.Epic{}, provider.ErrUnsupported
+}
+
+func (t *testProvider) ListEpicIssues(_ context.Context, _ int, _ int) ([]provider.Issue, error) {
+	return nil, provider.ErrUnsupported
+}
+
+func (t *testProvider) CreateMilestone(_ context.Context, _ string, _ provider.CreateMilestoneOptions) (provider.Milestone, error) {
+	return provider.Milestone{}, provider.ErrUnsupported
+}
+
+func (t *testProvider) UpdateMilestone(_ context.Context, _ string, _ int, _ provider.UpdateMilestoneOptions) (provider.Milestone, error) {
+	return provider.Milestone{}, provider.ErrUnsupported
+}
+
+func (t *testProvider) ListPipelines(_ context.Context, _ string, _ provider.ListPipelinesOptions) ([]provider.Pipeline, error) {
+	return nil, provider.ErrUnsupported
+}
+
+func (t *testProvider) GetPipeline(_ context.Context, _ string, _ int) (provider.Pipeline, error) {
+	return provider.Pipeline{}, provider.ErrUnsupported
+}
+
+func (t *testProvider) RunPipeline(_ context.Context, _ string, _ provider.RunPipelineOptions) (provider.Pipeline, error) {
+	return provider.Pipeline{}, provider.ErrUnsupported
+}
+
+func (t *testProvider) RetryPipeline(_ context.Context, _ string, _ int) (provider.Pipeline, error) {
+	return provider.Pipeline{}, provider.ErrUnsupported
+}
+
+func (t *testProvider) CancelPipeline(_ context.Context, _ string, _ int) error {
+	return provider.ErrUnsupported
+}
+
+func (t *testProvider) ListPipelineJobs(_ context.Context, _ string, _ int) ([]provider.Job, error) {
+	return nil, provider.ErrUnsupported
+}
+
+func (t *testProvider) GetJobLogs(_ context.Context, _ string, _ int) (string, error) {
+	return "", provider.ErrUnsupported
+}
+
+func (t *testProvider) ListArtifacts(_ context.Context, _ string, _ int) ([]provider.Artifact, error) {
+	return nil, provider.ErrUnsupported
+}
+
+func (t *testProvider) DownloadArtifact(_ context.Context, _ string, _ int, _ string) error {
+	return provider.ErrUnsupported
 }
 
 // ─── diff tests ──────────────────────────────────────────────────────────────

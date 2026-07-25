@@ -986,3 +986,458 @@ func TestGitHub_ResolveGroup_Unsupported(t *testing.T) {
 		t.Errorf("ResolveGroup err = %v; want ErrUnsupported", err)
 	}
 }
+
+func TestGitHub_GetProject_DecodesResponse(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/repos/owner/repo") {
+			t.Errorf("path = %q; want /repos/owner/repo", r.URL.Path)
+		}
+		writeJSON(w, map[string]any{
+			"id":             1234,
+			"name":           "repo",
+			"full_name":      "owner/repo",
+			"description":    "demo repo",
+			"html_url":       "https://github.com/owner/repo",
+			"default_branch": "main",
+			"open_issues":    5,
+			"archived":       false,
+		})
+	}))
+
+	p, err := prov.GetProject(context.Background(), "owner/repo")
+	if err != nil {
+		t.Fatalf("GetProject: %v", err)
+	}
+	if p.ID != 1234 || p.Name != "repo" || p.Path != "owner/repo" ||
+		p.FullName != "owner/repo" || p.Description != "demo repo" ||
+		p.WebURL != "https://github.com/owner/repo" ||
+		p.DefaultBranch != "main" || p.OpenIssuesCount != 5 || p.Archived {
+		t.Errorf("project = %+v", p)
+	}
+}
+
+func TestGitHub_GetProject_RejectsBadProject(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	if _, err := prov.GetProject(context.Background(), "no-slash"); err == nil {
+		t.Fatal("GetProject: expected error for malformed project, got nil")
+	}
+}
+
+func TestGitHub_GetProject_ReturnsErrorOn404(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+	}))
+
+	if _, err := prov.GetProject(context.Background(), "owner/missing"); err == nil {
+		t.Fatal("GetProject: expected error for 404, got nil")
+	}
+}
+
+func TestGitHub_ListWorkItems_Unsupported(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	if _, err := prov.ListWorkItems(context.Background(), "owner/repo", provider.ListWorkItemsOptions{}); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("ListWorkItems err = %v; want ErrUnsupported", err)
+	}
+}
+
+func TestGitHub_CreateWorkItem_Unsupported(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	if _, err := prov.CreateWorkItem(context.Background(), "owner/repo", provider.CreateWorkItemOptions{Title: "x"}); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("CreateWorkItem err = %v; want ErrUnsupported", err)
+	}
+}
+
+func TestGitHub_CloseWorkItem_Unsupported(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	if err := prov.CloseWorkItem(context.Background(), "owner/repo", 1); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("CloseWorkItem err = %v; want ErrUnsupported", err)
+	}
+}
+
+// ─── GetMilestone ─────────────────────────────────────────────────────────────
+
+func TestGitHub_GetMilestone_DecodesResponse(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/milestones/5") {
+			t.Errorf("path = %q; want .../milestones/5", r.URL.Path)
+		}
+		writeJSON(w, map[string]any{
+			"id": 5, "number": 5, "title": "Sprint 1", "state": "open",
+			"description": "first sprint",
+			"due_on":      "2026-02-01T00:00:00Z",
+		})
+	}))
+
+	m, err := prov.GetMilestone(context.Background(), "owner/repo", 5)
+	if err != nil {
+		t.Fatalf("GetMilestone: %v", err)
+	}
+	if m.ID != 5 || m.Title != "Sprint 1" || m.State != "open" ||
+		m.Description != "first sprint" || m.DueDate != "2026-02-01" {
+		t.Errorf("milestone = %+v", m)
+	}
+}
+
+func TestGitHub_GetMilestone_RejectsBadProject(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	if _, err := prov.GetMilestone(context.Background(), "no-slash", 1); err == nil {
+		t.Fatal("GetMilestone: expected error for malformed project, got nil")
+	}
+}
+
+// ─── CreateMilestone ──────────────────────────────────────────────────────────
+
+func TestGitHub_CreateMilestone_SendsTitleAndDueDate(t *testing.T) {
+	t.Parallel()
+
+	var gotTitle string
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %q; want POST", r.Method)
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		gotTitle, _ = body["title"].(string)
+		writeJSON(w, map[string]any{
+			"id": 10, "number": 10, "title": gotTitle, "state": "open",
+		})
+	}))
+
+	m, err := prov.CreateMilestone(context.Background(), "owner/repo", provider.CreateMilestoneOptions{
+		Title:       "Sprint 2",
+		Description: "second sprint",
+		DueDate:     "2026-04-14",
+	})
+	if err != nil {
+		t.Fatalf("CreateMilestone: %v", err)
+	}
+	if m.ID != 10 || m.Title != "Sprint 2" {
+		t.Errorf("milestone = %+v", m)
+	}
+	if gotTitle != "Sprint 2" {
+		t.Errorf("body title = %q; want Sprint 2", gotTitle)
+	}
+}
+
+func TestGitHub_CreateMilestone_RejectsBadDueDate(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	if _, err := prov.CreateMilestone(context.Background(), "owner/repo", provider.CreateMilestoneOptions{
+		Title:   "x",
+		DueDate: "not-a-date",
+	}); err == nil {
+		t.Fatal("CreateMilestone: expected error for bad due date, got nil")
+	}
+}
+
+// ─── UpdateMilestone ──────────────────────────────────────────────────────────
+
+func TestGitHub_UpdateMilestone_SendsTitleAndState(t *testing.T) {
+	t.Parallel()
+
+	var gotTitle, gotState string
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("method = %q; want PATCH", r.Method)
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		gotTitle, _ = body["title"].(string)
+		gotState, _ = body["state"].(string)
+		writeJSON(w, map[string]any{
+			"id": 5, "number": 5, "title": gotTitle, "state": gotState,
+		})
+	}))
+
+	title := "Renamed"
+	state := "close"
+	m, err := prov.UpdateMilestone(context.Background(), "owner/repo", 5, provider.UpdateMilestoneOptions{
+		Title: &title,
+		State: &state,
+	})
+	if err != nil {
+		t.Fatalf("UpdateMilestone: %v", err)
+	}
+	if m.ID != 5 || m.Title != "Renamed" {
+		t.Errorf("milestone = %+v", m)
+	}
+	if gotTitle != "Renamed" {
+		t.Errorf("body title = %q; want Renamed", gotTitle)
+	}
+	if gotState != "closed" {
+		t.Errorf("body state = %q; want closed", gotState)
+	}
+}
+
+// ─── Epic stubs (unsupported) ─────────────────────────────────────────────────
+
+func TestGitHub_LinkIssueToEpic_Unsupported(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	if err := prov.LinkIssueToEpic(context.Background(), 1, 2, 3); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("LinkIssueToEpic err = %v; want ErrUnsupported", err)
+	}
+}
+
+func TestGitHub_UpdateGroupEpic_Unsupported(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	if _, err := prov.UpdateGroupEpic(context.Background(), 1, 2, provider.UpdateEpicOptions{}); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("UpdateGroupEpic err = %v; want ErrUnsupported", err)
+	}
+}
+
+func TestGitHub_ListEpicIssues_Unsupported(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	if _, err := prov.ListEpicIssues(context.Background(), 1, 2); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("ListEpicIssues err = %v; want ErrUnsupported", err)
+	}
+}
+
+// ─── ListPipelines ────────────────────────────────────────────────────────────
+
+func TestGitHub_ListPipelines_DecodesResponse(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/actions/runs") {
+			t.Errorf("path = %q; want .../actions/runs", r.URL.Path)
+		}
+		writeJSON(w, map[string]any{
+			"total_count": 1,
+			"workflow_runs": []map[string]any{
+				{
+					"id":           100,
+					"status":       "completed",
+					"conclusion":   "success",
+					"head_branch":  "main",
+					"head_sha":     "abc123",
+					"html_url":     "https://github.com/owner/repo/actions/runs/100",
+					"created_at":   "2026-01-01T00:00:00Z",
+					"updated_at":   "2026-01-01T00:05:00Z",
+					"run_number":   1,
+					"event":        "push",
+					"display_title": "CI",
+				},
+			},
+		})
+	}))
+
+	pipes, err := prov.ListPipelines(context.Background(), "owner/repo", provider.ListPipelinesOptions{
+		Page: 1, PerPage: 20,
+	})
+	if err != nil {
+		t.Fatalf("ListPipelines: %v", err)
+	}
+	if len(pipes) != 1 {
+		t.Fatalf("pipelines len = %d; want 1", len(pipes))
+	}
+	if pipes[0].ID != 100 || pipes[0].Status != "success" || pipes[0].Ref != "main" ||
+		pipes[0].SHA != "abc123" {
+		t.Errorf("pipeline = %+v", pipes[0])
+	}
+}
+
+func TestGitHub_ListPipelines_RejectsBadProject(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	if _, err := prov.ListPipelines(context.Background(), "no-slash", provider.ListPipelinesOptions{}); err == nil {
+		t.Fatal("ListPipelines: expected error for malformed project, got nil")
+	}
+}
+
+// ─── GetPipeline ──────────────────────────────────────────────────────────────
+
+func TestGitHub_GetPipeline_DecodesResponse(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"id":           200,
+			"status":       "in_progress",
+			"conclusion":   nil,
+			"head_branch":  "feature",
+			"head_sha":     "def456",
+			"html_url":     "https://github.com/owner/repo/actions/runs/200",
+			"created_at":   "2026-01-01T00:00:00Z",
+			"updated_at":   "2026-01-01T00:05:00Z",
+			"run_number":   2,
+			"event":        "pull_request",
+			"display_title": "PR CI",
+		})
+	}))
+
+	p, err := prov.GetPipeline(context.Background(), "owner/repo", 200)
+	if err != nil {
+		t.Fatalf("GetPipeline: %v", err)
+	}
+	if p.ID != 200 || p.Status != "running" || p.Ref != "feature" {
+		t.Errorf("pipeline = %+v", p)
+	}
+}
+
+// ─── RunPipeline (unsupported) ────────────────────────────────────────────────
+
+func TestGitHub_RunPipeline_Unsupported(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	if _, err := prov.RunPipeline(context.Background(), "owner/repo", provider.RunPipelineOptions{}); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("RunPipeline err = %v; want ErrUnsupported", err)
+	}
+}
+
+// ─── RetryPipeline ────────────────────────────────────────────────────────────
+
+func TestGitHub_RetryPipeline_RerunsAndFetches(t *testing.T) {
+	t.Parallel()
+
+	var rerunCalled bool
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/rerun") {
+			rerunCalled = true
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		writeJSON(w, map[string]any{
+			"id":           300,
+			"status":       "queued",
+			"conclusion":   nil,
+			"head_branch":  "main",
+			"head_sha":     "abc123",
+			"html_url":     "https://github.com/owner/repo/actions/runs/300",
+			"created_at":   "2026-01-01T00:00:00Z",
+			"updated_at":   "2026-01-01T00:05:00Z",
+			"run_number":   3,
+			"event":        "push",
+			"display_title": "CI",
+		})
+	}))
+
+	p, err := prov.RetryPipeline(context.Background(), "owner/repo", 300)
+	if err != nil {
+		t.Fatalf("RetryPipeline: %v", err)
+	}
+	if !rerunCalled {
+		t.Error("rerun endpoint was not called")
+	}
+	if p.ID != 300 || p.Status != "pending" {
+		t.Errorf("pipeline = %+v", p)
+	}
+}
+
+// ─── CancelPipeline ───────────────────────────────────────────────────────────
+
+func TestGitHub_CancelPipeline_SendsCancel(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %q; want POST", r.Method)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+
+	if err := prov.CancelPipeline(context.Background(), "owner/repo", 400); err != nil {
+		t.Fatalf("CancelPipeline: %v", err)
+	}
+}
+
+// ─── ListPipelineJobs ─────────────────────────────────────────────────────────
+
+func TestGitHub_ListPipelineJobs_DecodesResponse(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"total_count": 1,
+			"jobs": []map[string]any{
+				{
+					"id":          500,
+					"status":      "completed",
+					"conclusion":  "success",
+					"name":        "build",
+					"started_at":  "2026-01-01T00:00:00Z",
+					"completed_at": "2026-01-01T00:02:00Z",
+					"html_url":    "https://github.com/owner/repo/actions/runs/100/job/500",
+				},
+			},
+		})
+	}))
+
+	jobs, err := prov.ListPipelineJobs(context.Background(), "owner/repo", 100)
+	if err != nil {
+		t.Fatalf("ListPipelineJobs: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("jobs len = %d; want 1", len(jobs))
+	}
+	if jobs[0].ID != 500 || jobs[0].Name != "build" || jobs[0].Status != "success" {
+		t.Errorf("job = %+v", jobs[0])
+	}
+}
+
+// ─── ListArtifacts ────────────────────────────────────────────────────────────
+
+func TestGitHub_ListArtifacts_DecodesResponse(t *testing.T) {
+	t.Parallel()
+
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"total_count": 1,
+			"artifacts": []map[string]any{
+				{
+					"id": 600, "name": "build-output", "size_in_bytes": 1024,
+					"expired": false,
+				},
+			},
+		})
+	}))
+
+	arts, err := prov.ListArtifacts(context.Background(), "owner/repo", 100)
+	if err != nil {
+		t.Fatalf("ListArtifacts: %v", err)
+	}
+	if len(arts) != 1 {
+		t.Fatalf("artifacts len = %d; want 1", len(arts))
+	}
+	if arts[0].Name != "build-output" || arts[0].Size != 1024 || arts[0].Expired {
+		t.Errorf("artifact = %+v", arts[0])
+	}
+}

@@ -247,6 +247,7 @@ type ListPipelinesOptions struct {
 // RunPipelineOptions captures the fields accepted when triggering a pipeline.
 type RunPipelineOptions struct {
 	Ref       string            // branch or tag (required)
+	Workflow  string            // workflow file name (GitHub/Gitea Actions); empty on GitLab
 	Variables map[string]string // optional CI/CD variables
 }
 

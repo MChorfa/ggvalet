@@ -24,8 +24,11 @@ import (
 
 // Gitea is the provider.Provider implementation for Gitea instances.
 type Gitea struct {
-	client *giteasdk.Client
-	host   string
+	client  *giteasdk.Client
+	host    string
+	baseURL string
+	token   string
+	httpClient *http.Client
 }
 
 // New returns a provider bound to cfg.GiteaURL and cfg.Token.
@@ -57,7 +60,7 @@ func New(cfg *config.Config) (*Gitea, error) {
 		host = u.Host
 	}
 
-	return &Gitea{client: c, host: host}, nil
+	return &Gitea{client: c, host: host, baseURL: baseURL, token: cfg.Token, httpClient: httpClient}, nil
 }
 
 // Kind returns provider.KindGitea.
@@ -859,13 +862,38 @@ func (g *Gitea) GetPipeline(ctx context.Context, project string, id int) (provid
 }
 
 // RunPipeline triggers a Gitea Actions workflow via workflow_dispatch.
-// Gitea requires a workflow file name or ID; we return ErrUnsupported
-// since we can't know which workflow to trigger from a ref alone.
+// Gitea requires a workflow file name (opts.Workflow) and a ref.
 func (g *Gitea) RunPipeline(ctx context.Context, project string, opts provider.RunPipelineOptions) (provider.Pipeline, error) {
-	_ = ctx
-	_ = project
-	_ = opts
-	return provider.Pipeline{}, fmt.Errorf("gitea run pipeline: workflow_dispatch requires a workflow file name: %w", provider.ErrUnsupported)
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return provider.Pipeline{}, err
+	}
+	if opts.Workflow == "" {
+		return provider.Pipeline{}, fmt.Errorf("gitea run pipeline: --workflow required (workflow file name, e.g. ci.yml): %w", provider.ErrUnsupported)
+	}
+
+	dispatchOpt := giteasdk.CreateActionsWorkflowDispatchOption{
+		Ref:    opts.Ref,
+		Inputs: opts.Variables,
+	}
+
+	details, _, err := g.client.DispatchRepoActionWorkflow(ctx, owner, repo, opts.Workflow, dispatchOpt, true)
+	if err != nil {
+		return provider.Pipeline{}, fmt.Errorf("gitea run pipeline: %w", err)
+	}
+
+	p := provider.Pipeline{
+		Project:   project,
+		Status:    "pending",
+		Ref:       opts.Ref,
+		CommitMsg: fmt.Sprintf("workflow_dispatch: %s on %s", opts.Workflow, opts.Ref),
+	}
+	if details != nil {
+		p.ID = int(details.WorkflowRunID)
+		p.IID = int(details.WorkflowRunID)
+		p.WebURL = details.HTMLURL
+	}
+	return p, nil
 }
 
 // RetryPipeline reruns a Gitea Actions workflow run.
@@ -882,12 +910,34 @@ func (g *Gitea) RetryPipeline(ctx context.Context, project string, id int) (prov
 }
 
 // CancelPipeline cancels a running Gitea Actions workflow run.
-// The Gitea SDK v1.2.0 does not expose a cancel endpoint; we return ErrUnsupported.
+// The Gitea SDK v1.2.0 does not expose a cancel endpoint, so we call
+// the REST API directly: POST /repos/{owner}/{repo}/actions/runs/{id}/cancel
 func (g *Gitea) CancelPipeline(ctx context.Context, project string, id int) error {
-	_ = ctx
-	_ = project
-	_ = id
-	return fmt.Errorf("gitea cancel pipeline: not supported by SDK v1.2.0: %w", provider.ErrUnsupported)
+	owner, repo, err := splitProject(project)
+	if err != nil {
+		return err
+	}
+
+	endpoint := fmt.Sprintf("%s/api/v1/repos/%s/%s/actions/runs/%d/cancel",
+		strings.TrimRight(g.baseURL, "/"), owner, repo, id)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("gitea cancel pipeline: build request: %w", err)
+	}
+	req.Header.Set("Authorization", "token "+g.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := g.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("gitea cancel pipeline: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("gitea cancel pipeline: HTTP %d", resp.StatusCode)
+	}
+	return nil
 }
 
 // ListPipelineJobs returns jobs for a Gitea Actions workflow run.

@@ -840,21 +840,43 @@ func (g *GitHub) GetPipeline(ctx context.Context, project string, id int) (provi
 }
 
 // RunPipeline triggers a GitHub Actions workflow via workflow_dispatch.
-// On GitHub, this requires the workflow file to support workflow_dispatch.
+// On GitHub, this requires the workflow file name (opts.Workflow) and the
+// workflow must support workflow_dispatch triggers.
 func (g *GitHub) RunPipeline(ctx context.Context, project string, opts provider.RunPipelineOptions) (provider.Pipeline, error) {
 	owner, repo, err := splitProject(project)
 	if err != nil {
 		return provider.Pipeline{}, err
 	}
-	// GitHub requires a workflow file name or ID; we use the ref to trigger
-	// all workflows on that ref via repository_dispatch as a best-effort.
-	// A true workflow_dispatch requires knowing the workflow file name.
-	// We use CreateWorkflowDispatchEvent on the default workflow if available.
-	// For now, we return ErrUnsupported since we can't know which workflow to trigger.
-	_ = owner
-	_ = repo
-	_ = opts
-	return provider.Pipeline{}, fmt.Errorf("github run pipeline: workflow_dispatch requires a workflow file name; use 'gh workflow run' directly: %w", provider.ErrUnsupported)
+	if opts.Workflow == "" {
+		return provider.Pipeline{}, fmt.Errorf("github run pipeline: --workflow required (workflow file name, e.g. ci.yml): %w", provider.ErrUnsupported)
+	}
+
+	event := gh.CreateWorkflowDispatchEventRequest{
+		Ref: opts.Ref,
+	}
+	if len(opts.Variables) > 0 {
+		inputs := make(map[string]interface{}, len(opts.Variables))
+		for k, v := range opts.Variables {
+			inputs[k] = v
+		}
+		event.Inputs = inputs
+	}
+
+	_, err = g.client.Actions.CreateWorkflowDispatchEventByFileName(ctx, owner, repo, opts.Workflow, event)
+	if err != nil {
+		return provider.Pipeline{}, fmt.Errorf("github run pipeline: %w", err)
+	}
+
+	// GitHub's workflow_dispatch endpoint returns 204 No Content — no run
+	// object. We return a minimal Pipeline with the known ref and a pending
+	// status; the caller can poll ListPipelines to find the actual run.
+	return provider.Pipeline{
+		Project:   project,
+		Status:    "pending",
+		Ref:       opts.Ref,
+		CommitMsg: fmt.Sprintf("workflow_dispatch: %s on %s", opts.Workflow, opts.Ref),
+		Author:    provider.User{},
+	}, nil
 }
 
 // RetryPipeline reruns a failed GitHub Actions workflow run.

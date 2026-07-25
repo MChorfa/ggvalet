@@ -53,6 +53,14 @@ func TestCI_Run_WithVars(t *testing.T) {
 	}
 }
 
+func TestCI_Run_WithWorkflow(t *testing.T) {
+	setupTestClient(t)
+	if err := runCmd(t, ciCmd(), "run", "-p", "group/project", "--ref", "main",
+		"--workflow", "ci.yml"); err != nil {
+		t.Fatalf("ci run with workflow: %v", err)
+	}
+}
+
 func TestCI_Run_MissingRef(t *testing.T) {
 	setupTestClient(t)
 	if err := runCmd(t, ciCmd(), "run", "-p", "group/project"); err == nil {

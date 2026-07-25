@@ -288,7 +288,13 @@ func newTestGitea(t *testing.T) (*Gitea, *httptest.Server) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	return &Gitea{client: client, host: "gitea.example.com"}, srv
+	return &Gitea{
+		client:     client,
+		host:       "gitea.example.com",
+		baseURL:    srv.URL,
+		token:      "test-token",
+		httpClient: &http.Client{},
+	}, srv
 }
 
 func testGiteaHandler(t *testing.T, w http.ResponseWriter, r *http.Request) {
@@ -407,6 +413,11 @@ func testGiteaHandler(t *testing.T, w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("PK\x03\x04fake-zip"))
 	case strings.HasPrefix(path, "/repos/owner/repo/actions/jobs/") && strings.HasSuffix(path, "/logs") && r.Method == "GET":
 		fmt.Fprint(w, "log line 1\nlog line 2\n")
+	case strings.Contains(path, "/actions/workflows/") && strings.HasSuffix(path, "/dispatches") && r.Method == "POST":
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{"workflow_run_id": 999, "run_url": "https://gitea.example.com/owner/repo/actions/runs/999", "html_url": "https://gitea.example.com/owner/repo/actions/runs/999"}`)
+	case strings.HasPrefix(path, "/repos/owner/repo/actions/runs/") && strings.HasSuffix(path, "/cancel") && r.Method == "POST":
+		w.WriteHeader(http.StatusNoContent)
 	case strings.HasPrefix(path, "/repos/owner/repo/actions/runs/") && r.Method == "GET":
 		// Single run by ID
 		fmt.Fprint(w, `{"id": 200, "status": "in_progress", "conclusion": "", "head_branch": "feature", "head_sha": "def456", "html_url": "https://gitea.example.com/owner/repo/actions/runs/200", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:05:00Z"}`)
@@ -1054,14 +1065,40 @@ func TestGitea_GetPipeline_DecodesResponse(t *testing.T) {
 	}
 }
 
-// ─── RunPipeline (unsupported) ────────────────────────────────────────────────
+// ─── RunPipeline ──────────────────────────────────────────────────────────────
 
-func TestGitea_RunPipeline_Unsupported(t *testing.T) {
+func TestGitea_RunPipeline_NoWorkflow_Unsupported(t *testing.T) {
 	g, srv := newTestGitea(t)
 	defer srv.Close()
 
-	if _, err := g.RunPipeline(context.Background(), "owner/repo", provider.RunPipelineOptions{}); !errors.Is(err, provider.ErrUnsupported) {
-		t.Errorf("RunPipeline err = %v; want ErrUnsupported", err)
+	if _, err := g.RunPipeline(context.Background(), "owner/repo", provider.RunPipelineOptions{Ref: "main"}); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("RunPipeline without workflow err = %v; want ErrUnsupported", err)
+	}
+}
+
+func TestGitea_RunPipeline_DispatchesAndReturnsPending(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	p, err := g.RunPipeline(context.Background(), "owner/repo", provider.RunPipelineOptions{
+		Ref:      "main",
+		Workflow: "ci.yml",
+		Variables: map[string]string{"ENV": "staging"},
+	})
+	if err != nil {
+		t.Fatalf("RunPipeline: %v", err)
+	}
+	if p.Status != "pending" {
+		t.Errorf("pipeline status = %q; want 'pending'", p.Status)
+	}
+	if p.Ref != "main" {
+		t.Errorf("pipeline ref = %q; want 'main'", p.Ref)
+	}
+	if p.ID != 999 {
+		t.Errorf("pipeline ID = %d; want 999", p.ID)
+	}
+	if p.WebURL == "" {
+		t.Error("pipeline WebURL is empty; want non-empty")
 	}
 }
 
@@ -1080,14 +1117,23 @@ func TestGitea_RetryPipeline_RerunsAndFetches(t *testing.T) {
 	}
 }
 
-// ─── CancelPipeline (unsupported) ─────────────────────────────────────────────
+// ─── CancelPipeline ───────────────────────────────────────────────────────────
 
-func TestGitea_CancelPipeline_Unsupported(t *testing.T) {
+func TestGitea_CancelPipeline_SendsCancelRequest(t *testing.T) {
 	g, srv := newTestGitea(t)
 	defer srv.Close()
 
-	if err := g.CancelPipeline(context.Background(), "owner/repo", 400); !errors.Is(err, provider.ErrUnsupported) {
-		t.Errorf("CancelPipeline err = %v; want ErrUnsupported", err)
+	if err := g.CancelPipeline(context.Background(), "owner/repo", 400); err != nil {
+		t.Fatalf("CancelPipeline: %v", err)
+	}
+}
+
+func TestGitea_CancelPipeline_BadProject(t *testing.T) {
+	g, srv := newTestGitea(t)
+	defer srv.Close()
+
+	if err := g.CancelPipeline(context.Background(), "bad-format", 400); err == nil {
+		t.Fatal("CancelPipeline with bad project should error")
 	}
 }
 

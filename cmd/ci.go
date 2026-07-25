@@ -144,7 +144,7 @@ func ciViewCmd() *cobra.Command {
 // ─── run ──────────────────────────────────────────────────────────────────────
 
 func ciRunCmd() *cobra.Command {
-	var project, ref string
+	var project, ref, workflow string
 	var vars []string
 
 	cmd := &cobra.Command{
@@ -161,7 +161,7 @@ func ciRunCmd() *cobra.Command {
 				return fmt.Errorf("--ref required (branch or tag)")
 			}
 
-			opts := provider.RunPipelineOptions{Ref: ref}
+			opts := provider.RunPipelineOptions{Ref: ref, Workflow: workflow}
 			for _, v := range vars {
 				kv := strings.SplitN(v, "=", 2)
 				if len(kv) != 2 {
@@ -187,6 +187,7 @@ func ciRunCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&project, "project", "p", "", "Project path or ID")
 	cmd.Flags().StringVar(&ref, "ref", "", "Branch or tag to run on (required)")
+	cmd.Flags().StringVar(&workflow, "workflow", "", "Workflow file name (GitHub/Gitea Actions, e.g. ci.yml)")
 	cmd.Flags().StringArrayVar(&vars, "var", nil, "CI/CD variable (key=value, repeatable)")
 	return cmd
 }

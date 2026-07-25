@@ -1309,15 +1309,52 @@ func TestGitHub_GetPipeline_DecodesResponse(t *testing.T) {
 	}
 }
 
-// ─── RunPipeline (unsupported) ────────────────────────────────────────────────
+// ─── RunPipeline ──────────────────────────────────────────────────────────────
 
-func TestGitHub_RunPipeline_Unsupported(t *testing.T) {
+func TestGitHub_RunPipeline_NoWorkflow_Unsupported(t *testing.T) {
 	t.Parallel()
 
 	prov := newTestProvider(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 
-	if _, err := prov.RunPipeline(context.Background(), "owner/repo", provider.RunPipelineOptions{}); !errors.Is(err, provider.ErrUnsupported) {
-		t.Errorf("RunPipeline err = %v; want ErrUnsupported", err)
+	if _, err := prov.RunPipeline(context.Background(), "owner/repo", provider.RunPipelineOptions{Ref: "main"}); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("RunPipeline without workflow err = %v; want ErrUnsupported", err)
+	}
+}
+
+func TestGitHub_RunPipeline_DispatchesAndReturnsPending(t *testing.T) {
+	t.Parallel()
+
+	var dispatchCalled bool
+	var capturedPath string
+	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/dispatches") {
+			dispatchCalled = true
+			capturedPath = r.URL.Path
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		writeJSON(w, map[string]any{"message": "unexpected"})
+	}))
+
+	p, err := prov.RunPipeline(context.Background(), "owner/repo", provider.RunPipelineOptions{
+		Ref:      "main",
+		Workflow: "ci.yml",
+		Variables: map[string]string{"ENV": "staging"},
+	})
+	if err != nil {
+		t.Fatalf("RunPipeline: %v", err)
+	}
+	if !dispatchCalled {
+		t.Fatal("workflow dispatch endpoint was not called")
+	}
+	if !strings.Contains(capturedPath, "ci.yml") {
+		t.Errorf("dispatch path = %q; want to contain 'ci.yml'", capturedPath)
+	}
+	if p.Status != "pending" {
+		t.Errorf("pipeline status = %q; want 'pending'", p.Status)
+	}
+	if p.Ref != "main" {
+		t.Errorf("pipeline ref = %q; want 'main'", p.Ref)
 	}
 }
 

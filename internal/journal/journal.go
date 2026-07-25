@@ -29,6 +29,11 @@ const (
 	OpList    Op = "list"
 	OpAssign  Op = "assign"
 	OpDelete  Op = "delete"
+	OpRun     Op = "run"
+	OpRetry   Op = "retry"
+	OpCancel  Op = "cancel"
+	OpView    Op = "view"
+	OpDownload Op = "download"
 )
 
 // Entity describes the GitLab resource type.
@@ -42,6 +47,9 @@ const (
 	EntityMR        Entity = "mr"
 	EntityLabel     Entity = "label"
 	EntityNote      Entity = "note"
+	EntityPipeline  Entity = "pipeline"
+	EntityJob       Entity = "job"
+	EntityArtifact  Entity = "artifact"
 )
 
 // Outcome is the terminal state of the operation.

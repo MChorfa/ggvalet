@@ -86,6 +86,7 @@ func Execute(version string) {
 		issueCmd(),
 		epicCmd(),
 		milestoneCmd(),
+		ciCmd(),
 		workItemCmd(),
 		mrCmd(),
 		syncCmd(),

@@ -90,12 +90,76 @@ func gitlabTestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Pipelines.
+	if strings.Contains(path, "/pipelines/") {
+		// /pipelines/:id/jobs
+		if strings.HasSuffix(path, "/jobs") && method == http.MethodGet {
+			if pageNotFirst {
+				write([]map[string]any{})
+				return
+			}
+			write([]map[string]any{
+				{"id": 11, "name": "build", "status": "success", "stage": "build", "ref": "main",
+					"web_url": "https://gitlab.example.com/jobs/11"},
+				{"id": 12, "name": "test", "status": "success", "stage": "test", "ref": "main",
+					"web_url": "https://gitlab.example.com/jobs/12"},
+			})
+			return
+		}
+		// /pipelines/:id/retry
+		if strings.HasSuffix(path, "/retry") && method == http.MethodPost {
+			write(pipelineJSON(pathIID(path), "pending", "main"))
+			return
+		}
+		// /pipelines/:id/cancel
+		if strings.HasSuffix(path, "/cancel") && method == http.MethodPost {
+			write(pipelineJSON(pathIID(path), "canceled", "main"))
+			return
+		}
+		// /pipelines/:id (get single)
+		if method == http.MethodGet {
+			write(pipelineJSON(pathIID(path), "success", "main"))
+			return
+		}
+		write(pipelineJSON(pathIID(path), "success", "main"))
+		return
+	}
 	if strings.Contains(path, "/pipelines") {
+		if method == http.MethodPost {
+			ref := stringField(body, "ref", "main")
+			write(pipelineJSON(42, "pending", ref))
+			return
+		}
 		if pageNotFirst {
 			write([]map[string]any{})
 			return
 		}
-		write([]map[string]any{{"id": 1, "status": "success", "web_url": "https://gitlab.example.com/p/1"}})
+		write([]map[string]any{
+			pipelineJSON(1, "success", "main"),
+			pipelineJSON(2, "failed", "feature/x"),
+		})
+		return
+	}
+	// /projects/:id/pipeline (singular, trigger)
+	if strings.HasSuffix(path, "/pipeline") && method == http.MethodPost {
+		ref := stringField(body, "ref", "main")
+		write(pipelineJSON(42, "pending", ref))
+		return
+	}
+
+	// Jobs: trace and artifacts.
+	if strings.Contains(path, "/jobs/") {
+		jid := pathIID(path)
+		if strings.HasSuffix(path, "/trace") && method == http.MethodGet {
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = w.Write([]byte(fmt.Sprintf("log output for job %d\nline 2\n", jid)))
+			return
+		}
+		if strings.HasSuffix(path, "/artifacts") && method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/zip")
+			_, _ = w.Write([]byte("PK\x03\x04fake-zip"))
+			return
+		}
+		write(map[string]any{"id": jid, "name": "build", "status": "success"})
 		return
 	}
 
@@ -467,5 +531,20 @@ func userJSON(id int, username, name, email string) map[string]any {
 		"name":     name,
 		"email":    email,
 		"web_url":  fmt.Sprintf("https://gitlab.example.com/%s", username),
+	}
+}
+
+func pipelineJSON(id int, status, ref string) map[string]any {
+	return map[string]any{
+		"id":          id,
+		"iid":         id,
+		"status":      status,
+		"ref":         ref,
+		"sha":         "abc123def456",
+		"web_url":     fmt.Sprintf("https://gitlab.example.com/group/project/-/pipelines/%d", id),
+		"created_at":  "2026-07-01T12:00:00Z",
+		"updated_at":  "2026-07-01T12:05:00Z",
+		"user":        map[string]any{"username": "alice"},
+		"commit":      map[string]any{"message": "test commit", "author_name": "Alice"},
 	}
 }

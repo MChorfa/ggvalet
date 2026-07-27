@@ -997,7 +997,7 @@ func TestGitLab_ListGroupEpics_DecodesAuthorAndDates(t *testing.T) {
 		writeJSON(w, []map[string]any{
 			{"id": 7, "iid": 3, "title": "Epic A", "state": "opened",
 				"description": "desc", "labels": []string{"red"},
-				"author": map[string]any{"id": 9, "username": "alice", "name": "Alice", "web_url": "https://gitlab.example.com/u/alice"},
+				"author":     map[string]any{"id": 9, "username": "alice", "name": "Alice", "web_url": "https://gitlab.example.com/u/alice"},
 				"start_date": "2026-02-01", "due_date": "2026-03-01",
 				"web_url": "https://gitlab.example.com/groups/g/-/epics/3"},
 		})
@@ -1430,11 +1430,11 @@ func TestGitLab_GetPipeline_DecodesSingle(t *testing.T) {
 		}
 		writeJSON(w, map[string]any{
 			"id": 42, "iid": 7, "status": "running", "ref": "main", "sha": "abc",
-			"web_url": "https://gitlab.example/p/42",
-			"created_at": "2026-01-01T00:00:00Z",
-			"updated_at": "2026-01-01T00:05:00Z",
+			"web_url":     "https://gitlab.example/p/42",
+			"created_at":  "2026-01-01T00:00:00Z",
+			"updated_at":  "2026-01-01T00:05:00Z",
 			"finished_at": "2026-01-01T00:10:00Z",
-			"user": map[string]any{"id": 1, "username": "alice", "name": "Alice", "web_url": "u"},
+			"user":        map[string]any{"id": 1, "username": "alice", "name": "Alice", "web_url": "u"},
 		})
 	}))
 
@@ -1843,11 +1843,11 @@ func TestGitLab_ListEpicIssues_DecodesResponse(t *testing.T) {
 			{
 				"id": 100, "iid": 7, "title": "Epic issue",
 				"state": "opened", "description": "desc",
-				"author":        map[string]any{"id": 1, "username": "alice", "name": "Alice", "web_url": "u"},
-				"references":    map[string]any{"full": "group/proj#7"},
-				"created_at":    "2026-01-01T00:00:00Z",
-				"updated_at":    "2026-01-02T00:00:00Z",
-				"web_url":       "https://gitlab.example/group/proj/issues/7",
+				"author":     map[string]any{"id": 1, "username": "alice", "name": "Alice", "web_url": "u"},
+				"references": map[string]any{"full": "group/proj#7"},
+				"created_at": "2026-01-01T00:00:00Z",
+				"updated_at": "2026-01-02T00:00:00Z",
+				"web_url":    "https://gitlab.example/group/proj/issues/7",
 			},
 		})
 	}))

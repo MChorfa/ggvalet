@@ -18,11 +18,11 @@ var hostNeutralPrefixes = []string{
 	"ggvalet receipt",
 	"ggvalet plan",
 	"ggvalet report",
-	"ggvalet issue", // fully migrated to client.Provider (P8/P13/P16)
-	"ggvalet mr",    // fully migrated to client.Provider (P10/P14/P15)
-	"ggvalet label", // fully migrated to client.Provider (P9/P16)
-	"ggvalet standup", // migrated to client.Provider (journal + ListMyIssues + CreateIssue)
-	"ggvalet epic",  // migrated to client.Provider (ResolveGroup + ListGroupEpics + CreateGroupEpic + UpdateGroupEpic + ListEpicIssues)
+	"ggvalet issue",     // fully migrated to client.Provider (P8/P13/P16)
+	"ggvalet mr",        // fully migrated to client.Provider (P10/P14/P15)
+	"ggvalet label",     // fully migrated to client.Provider (P9/P16)
+	"ggvalet standup",   // migrated to client.Provider (journal + ListMyIssues + CreateIssue)
+	"ggvalet epic",      // migrated to client.Provider (ResolveGroup + ListGroupEpics + CreateGroupEpic + UpdateGroupEpic + ListEpicIssues)
 	"ggvalet milestone", // migrated to client.Provider (ListMilestones + GetMilestone + CreateMilestone + UpdateMilestone)
 	"ggvalet sync",      // migrated to client.Provider (ListIssues + CreateIssue + ListGroupEpics + CreateGroupEpic + ListMilestones + CreateMilestone + ResolveGroup)
 	"ggvalet shields",   // migrated to client.Provider (GetProject + ListPipelines + ListMilestones + ListLabels + GetIssue)

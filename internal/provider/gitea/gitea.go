@@ -24,10 +24,10 @@ import (
 
 // Gitea is the provider.Provider implementation for Gitea instances.
 type Gitea struct {
-	client  *giteasdk.Client
-	host    string
-	baseURL string
-	token   string
+	client     *giteasdk.Client
+	host       string
+	baseURL    string
+	token      string
 	httpClient *http.Client
 }
 
@@ -1226,8 +1226,8 @@ func toPR(project string, pr *giteasdk.PullRequest) provider.MergeRequest {
 	}
 
 	out := provider.MergeRequest{
-		ID:     int(pr.ID),
-		IID:    int(pr.Index),
+		ID:      int(pr.ID),
+		IID:     int(pr.Index),
 		Project: project,
 		Title:   pr.Title,
 		Body:    pr.Body,

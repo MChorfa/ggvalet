@@ -165,16 +165,16 @@ func TestToIssue_ProjectFromRepo(t *testing.T) {
 func TestToPR(t *testing.T) {
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	pr := &giteasdk.PullRequest{
-		ID:     42,
-		Index:  3,
-		Title:  "Feature",
-		Body:   "pr body",
-		State:  giteasdk.StateOpen,
+		ID:      42,
+		Index:   3,
+		Title:   "Feature",
+		Body:    "pr body",
+		State:   giteasdk.StateOpen,
 		HTMLURL: "https://gitea.example.com/owner/repo/pulls/3",
-		Poster: &giteasdk.User{ID: 1, UserName: "alice"},
-		Head:   &giteasdk.PRBranchInfo{Ref: "feature"},
-		Base:   &giteasdk.PRBranchInfo{Ref: "main"},
-		Labels: []*giteasdk.Label{{Name: "enhancement"}},
+		Poster:  &giteasdk.User{ID: 1, UserName: "alice"},
+		Head:    &giteasdk.PRBranchInfo{Ref: "feature"},
+		Base:    &giteasdk.PRBranchInfo{Ref: "main"},
+		Labels:  []*giteasdk.Label{{Name: "enhancement"}},
 		Created: &now,
 		Updated: &now,
 	}
@@ -1081,8 +1081,8 @@ func TestGitea_RunPipeline_DispatchesAndReturnsPending(t *testing.T) {
 	defer srv.Close()
 
 	p, err := g.RunPipeline(context.Background(), "owner/repo", provider.RunPipelineOptions{
-		Ref:      "main",
-		Workflow: "ci.yml",
+		Ref:       "main",
+		Workflow:  "ci.yml",
 		Variables: map[string]string{"ENV": "staging"},
 	})
 	if err != nil {

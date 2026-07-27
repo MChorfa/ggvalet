@@ -21,18 +21,18 @@ import (
 type Op string
 
 const (
-	OpCreate  Op = "create"
-	OpUpdate  Op = "update"
-	OpClose   Op = "close"
-	OpReopen  Op = "reopen"
-	OpComment Op = "comment"
-	OpList    Op = "list"
-	OpAssign  Op = "assign"
-	OpDelete  Op = "delete"
-	OpRun     Op = "run"
-	OpRetry   Op = "retry"
-	OpCancel  Op = "cancel"
-	OpView    Op = "view"
+	OpCreate   Op = "create"
+	OpUpdate   Op = "update"
+	OpClose    Op = "close"
+	OpReopen   Op = "reopen"
+	OpComment  Op = "comment"
+	OpList     Op = "list"
+	OpAssign   Op = "assign"
+	OpDelete   Op = "delete"
+	OpRun      Op = "run"
+	OpRetry    Op = "retry"
+	OpCancel   Op = "cancel"
+	OpView     Op = "view"
 	OpDownload Op = "download"
 )
 

@@ -51,7 +51,7 @@ func epicListCmd() *cobra.Command {
 			}
 
 			epics, err := glClient.Provider.ListGroupEpics(cmd.Context(), groupID, provider.ListGroupEpicsOptions{
-				State:  state,
+				State:   state,
 				PerPage: 50,
 			})
 			if err != nil {

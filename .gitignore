@@ -32,6 +32,7 @@ vendor/
 dist/
 site/
 public/
+reports/
 sbom.cdx.json
 *.pem
 *.sig

@@ -778,16 +778,16 @@ func TestGitHub_ListMyMergeRequests_UsesSearchAPI(t *testing.T) {
 				"total_count": 1,
 				"items": []map[string]any{
 					{
-						"id":     100,
-						"number": 42,
-						"title":  "Fix bug",
-						"state":  "open",
+						"id":       100,
+						"number":   42,
+						"title":    "Fix bug",
+						"state":    "open",
 						"html_url": "https://github.com/owner/repo/pull/42",
 						"repository": map[string]any{
 							"full_name": "owner/repo",
 						},
 						"pull_request": map[string]any{"url": "https://api.github.com/repos/owner/repo/pulls/42"},
-						"user": map[string]any{"id": 1, "login": "alice"},
+						"user":         map[string]any{"id": 1, "login": "alice"},
 					},
 				},
 			})
@@ -1238,16 +1238,16 @@ func TestGitHub_ListPipelines_DecodesResponse(t *testing.T) {
 			"total_count": 1,
 			"workflow_runs": []map[string]any{
 				{
-					"id":           100,
-					"status":       "completed",
-					"conclusion":   "success",
-					"head_branch":  "main",
-					"head_sha":     "abc123",
-					"html_url":     "https://github.com/owner/repo/actions/runs/100",
-					"created_at":   "2026-01-01T00:00:00Z",
-					"updated_at":   "2026-01-01T00:05:00Z",
-					"run_number":   1,
-					"event":        "push",
+					"id":            100,
+					"status":        "completed",
+					"conclusion":    "success",
+					"head_branch":   "main",
+					"head_sha":      "abc123",
+					"html_url":      "https://github.com/owner/repo/actions/runs/100",
+					"created_at":    "2026-01-01T00:00:00Z",
+					"updated_at":    "2026-01-01T00:05:00Z",
+					"run_number":    1,
+					"event":         "push",
 					"display_title": "CI",
 				},
 			},
@@ -1286,16 +1286,16 @@ func TestGitHub_GetPipeline_DecodesResponse(t *testing.T) {
 
 	prov := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{
-			"id":           200,
-			"status":       "in_progress",
-			"conclusion":   nil,
-			"head_branch":  "feature",
-			"head_sha":     "def456",
-			"html_url":     "https://github.com/owner/repo/actions/runs/200",
-			"created_at":   "2026-01-01T00:00:00Z",
-			"updated_at":   "2026-01-01T00:05:00Z",
-			"run_number":   2,
-			"event":        "pull_request",
+			"id":            200,
+			"status":        "in_progress",
+			"conclusion":    nil,
+			"head_branch":   "feature",
+			"head_sha":      "def456",
+			"html_url":      "https://github.com/owner/repo/actions/runs/200",
+			"created_at":    "2026-01-01T00:00:00Z",
+			"updated_at":    "2026-01-01T00:05:00Z",
+			"run_number":    2,
+			"event":         "pull_request",
 			"display_title": "PR CI",
 		})
 	}))
@@ -1337,8 +1337,8 @@ func TestGitHub_RunPipeline_DispatchesAndReturnsPending(t *testing.T) {
 	}))
 
 	p, err := prov.RunPipeline(context.Background(), "owner/repo", provider.RunPipelineOptions{
-		Ref:      "main",
-		Workflow: "ci.yml",
+		Ref:       "main",
+		Workflow:  "ci.yml",
 		Variables: map[string]string{"ENV": "staging"},
 	})
 	if err != nil {
@@ -1372,16 +1372,16 @@ func TestGitHub_RetryPipeline_RerunsAndFetches(t *testing.T) {
 			return
 		}
 		writeJSON(w, map[string]any{
-			"id":           300,
-			"status":       "queued",
-			"conclusion":   nil,
-			"head_branch":  "main",
-			"head_sha":     "abc123",
-			"html_url":     "https://github.com/owner/repo/actions/runs/300",
-			"created_at":   "2026-01-01T00:00:00Z",
-			"updated_at":   "2026-01-01T00:05:00Z",
-			"run_number":   3,
-			"event":        "push",
+			"id":            300,
+			"status":        "queued",
+			"conclusion":    nil,
+			"head_branch":   "main",
+			"head_sha":      "abc123",
+			"html_url":      "https://github.com/owner/repo/actions/runs/300",
+			"created_at":    "2026-01-01T00:00:00Z",
+			"updated_at":    "2026-01-01T00:05:00Z",
+			"run_number":    3,
+			"event":         "push",
 			"display_title": "CI",
 		})
 	}))
@@ -1426,13 +1426,13 @@ func TestGitHub_ListPipelineJobs_DecodesResponse(t *testing.T) {
 			"total_count": 1,
 			"jobs": []map[string]any{
 				{
-					"id":          500,
-					"status":      "completed",
-					"conclusion":  "success",
-					"name":        "build",
-					"started_at":  "2026-01-01T00:00:00Z",
+					"id":           500,
+					"status":       "completed",
+					"conclusion":   "success",
+					"name":         "build",
+					"started_at":   "2026-01-01T00:00:00Z",
 					"completed_at": "2026-01-01T00:02:00Z",
-					"html_url":    "https://github.com/owner/repo/actions/runs/100/job/500",
+					"html_url":     "https://github.com/owner/repo/actions/runs/100/job/500",
 				},
 			},
 		})

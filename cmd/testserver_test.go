@@ -536,15 +536,15 @@ func userJSON(id int, username, name, email string) map[string]any {
 
 func pipelineJSON(id int, status, ref string) map[string]any {
 	return map[string]any{
-		"id":          id,
-		"iid":         id,
-		"status":      status,
-		"ref":         ref,
-		"sha":         "abc123def456",
-		"web_url":     fmt.Sprintf("https://gitlab.example.com/group/project/-/pipelines/%d", id),
-		"created_at":  "2026-07-01T12:00:00Z",
-		"updated_at":  "2026-07-01T12:05:00Z",
-		"user":        map[string]any{"username": "alice"},
-		"commit":      map[string]any{"message": "test commit", "author_name": "Alice"},
+		"id":         id,
+		"iid":        id,
+		"status":     status,
+		"ref":        ref,
+		"sha":        "abc123def456",
+		"web_url":    fmt.Sprintf("https://gitlab.example.com/group/project/-/pipelines/%d", id),
+		"created_at": "2026-07-01T12:00:00Z",
+		"updated_at": "2026-07-01T12:05:00Z",
+		"user":       map[string]any{"username": "alice"},
+		"commit":     map[string]any{"message": "test commit", "author_name": "Alice"},
 	}
 }

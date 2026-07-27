@@ -116,9 +116,9 @@ type Options struct {
 
 // Provider names used by GLVALET_PROVIDER and Config.Provider.
 const (
-	providerGitLab  = "gitlab"
-	providerGitHub  = "github"
-	providerGitea   = "gitea"
+	providerGitLab = "gitlab"
+	providerGitHub = "github"
+	providerGitea  = "gitea"
 )
 
 // providerFromEnv returns the trimmed, lower-cased GLVALET_PROVIDER value.

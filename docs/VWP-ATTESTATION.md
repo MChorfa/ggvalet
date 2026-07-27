@@ -47,7 +47,8 @@
 | DEF-01 | `client.New` flag/env routing to the selected provider | **C (done in P8)** |
 | DEF-02 | Signed release artifacts (cosign + SBOM) | **pipeline C / signature S (P17)** |
 | DEF-03 | BPL (back-propagation lineage) for promotion-critical artifacts | A |
-| RES-01 | Command-layer provider migration **complete** for host-neutral surfaces — 42 raw `.GL.` sites remain across 10 GitLab-only `cmd/` files; GitHub host is therefore `[S]` experimental | S |
+| RES-01 | Command-layer provider migration **complete** for host-neutral surfaces — 42 raw `.GL.` sites remain across 10 GitLab-only `cmd/` files; GitHub live CI integration job added, but GitHub path stays `[S]` until `github-live` passes with a real token | S |
+|| P21 | GitHub live-instance CI integration job: `github-live` job and `TestProviderGitHubLive` wired, ready for token-driven promotion to `[C]` | S |
 
 ---
 
@@ -298,8 +299,10 @@ deferred:         ["full command-layer provider migration (RES-01)", "DEF-02 cos
   Under `GLVALET_PROVIDER=github` these **fail loud** via the P12 host guard
   (`cmd/hostguard.go`); on GitHub, host-neutral commands that lack a GitHub analogue
   (`mr mine`/`mr approve`, `issue list --milestone`) dispatch through `Provider` and return
-  `ErrUnsupported`. **GitHub remains `[S]` experimental** until a live-instance integration
-  job runs in CI (currently flag-guarded, token-required).
+  `ErrUnsupported`. **GitHub remains `[S]` experimental**: a live-instance integration
+  job (`github-live` in `.gitlab-ci.yml` plus `internal/provider/github/github_live_test.go`)
+  has been added, but the path stays `[S]` until that job passes against `api.github.com`
+  with a real token.
 
 ---
 
@@ -354,9 +357,24 @@ stubs_remaining:  0
 deferred:         []
 ```
 
+```yaml
+capability_id:    p21-github-live-ci
+claim:            A live-instance GitHub integration test and CI job are wired. The `github-live` job in `.gitlab-ci.yml` runs `go test ./internal/provider/github -run TestProviderGitHubLive` when `GLVALET_GITHUB_TOKEN` is set, exercising `ListMyIssues` and, if `GLVALET_GITHUB_TEST_PROJECT` is set, `ListLabels` and `ListIssues` against `api.github.com`.
+classification:   S
+evidence_refs:
+  - kind:  artifact
+    hash:  ~
+    path:  .gitlab-ci.yml
+  - kind:  artifact
+    hash:  ~
+    path:  internal/provider/github/github_live_test.go
+stubs_remaining:  1
+deferred:         ["passing live GitHub token run"]
+```
+
 ## Stubs remaining
 
-Count: **4** (was incorrectly reported as 0 on 2026-05-28; 9 at P11). All are surfaced
+Count: **4** intentional `ErrUnsupported` limits plus **1** deferred live-instance run (P21), for a total of **5** (was incorrectly reported as 0 on 2026-05-28; 9 at P11). All are surfaced
 here per P-VW-004. None are silent. **Zero remain in the command-migration class** — all
 cleared P13–P16.
 

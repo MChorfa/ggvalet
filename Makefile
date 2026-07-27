@@ -94,13 +94,21 @@ release: clean cross checksums sbom
 	@ls -1 $(DIST)
 	@echo "Sign in CI: cosign sign-blob (keyless) → SHA256SUMS.sig + .pem"
 
-# Cosign-sign the VWP attestation. Keyless in CI (SIGSTORE_ID_TOKEN present);
-# locally pass a key, e.g. `cosign sign-blob --key cosign.key ...`.
+# Cosign-sign the VWP attestation and optional evidence bundle. Keyless in CI
+# (SIGSTORE_ID_TOKEN present); locally pass a key via COSIGN_KEY.
+COSIGN_KEY ?=
+EVIDENCE_BUNDLE ?=
 attest-sign:
-	cosign sign-blob --yes docs/VWP-ATTESTATION.md \
-		--output-signature docs/VWP-ATTESTATION.md.sig \
-		--output-certificate docs/VWP-ATTESTATION.md.pem
-	@echo "Signed docs/VWP-ATTESTATION.md → .sig + .pem"
+	cosign sign-blob --yes --use-signing-config=false \
+		--bundle docs/VWP-ATTESTATION.md.bundle \
+		$(if $(COSIGN_KEY),--key $(COSIGN_KEY)) docs/VWP-ATTESTATION.md
+	@echo "Signed docs/VWP-ATTESTATION.md → .bundle"
+	if [ -n "$(EVIDENCE_BUNDLE)" ]; then \
+		cosign sign-blob --yes --use-signing-config=false \
+			--bundle "$(EVIDENCE_BUNDLE).bundle" \
+			$(if $(COSIGN_KEY),--key $(COSIGN_KEY)) "$(EVIDENCE_BUNDLE)"; \
+		echo "Signed $(EVIDENCE_BUNDLE) → .bundle"; \
+	fi
 
 # Validate GoReleaser configuration. The GitLab variant requires a git repo
 # with a remote; it is validated by the release pipeline.

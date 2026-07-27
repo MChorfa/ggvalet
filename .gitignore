@@ -36,3 +36,6 @@ reports/
 sbom.cdx.json
 *.pem
 *.sig
+*.bundle
+ggvalet-attest.key
+ggvalet-attest.pub

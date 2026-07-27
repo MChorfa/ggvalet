@@ -58,7 +58,7 @@ func journalShowCmd() *cobra.Command {
 				f.Outcome = journal.OutcomeErr
 			}
 
-			entries, err := glClient.Journal.Query(f)
+			entries, err := glClient.QueryEntries(cmd.Context(), f)
 			if err != nil {
 				return err
 			}
@@ -132,7 +132,7 @@ func journalStatsCmd() *cobra.Command {
 				f.Host = host
 			}
 
-			entries, err := glClient.Journal.Query(f)
+			entries, err := glClient.QueryEntries(cmd.Context(), f)
 			if err != nil {
 				return err
 			}

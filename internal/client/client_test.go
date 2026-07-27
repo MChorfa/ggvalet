@@ -5,11 +5,13 @@
 package client_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/MChorfa/ggvalet/internal/config"
 	"github.com/MChorfa/ggvalet/internal/journal"
 	"github.com/MChorfa/ggvalet/internal/provider"
+	"github.com/MChorfa/ggvalet/internal/state"
 	gl "github.com/xanzy/go-gitlab"
 )
 
@@ -596,5 +599,204 @@ func TestClient_JournalQuery_FilterByHost(t *testing.T) {
 	}
 	if len(bEntries) > 0 && bEntries[0].Entity != journal.EntityMR {
 		t.Errorf("host-b entity = %q; want %q", bEntries[0].Entity, journal.EntityMR)
+	}
+}
+
+// TestClient_QueryEntries_UsesStateProjection verifies that QueryEntries reads
+// from the SQLite journal projection after Rec writes an entry.
+func TestClient_QueryEntries_UsesStateProjection(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "[]")
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Host:        "host-query.local",
+		GitLabURL:   srv.URL,
+		Token:       "tok",
+		JournalPath: filepath.Join(dir, "j.jsonl"),
+		CachePath:   filepath.Join(dir, "cache"),
+	}
+	c, err := client.New(cfg)
+	if err != nil {
+		t.Fatalf("client.New: %v", err)
+	}
+	defer c.Close()
+
+	if err := c.Rec(journal.OpCreate, journal.EntityIssue, "g/p", "", 42, 7, "title", "http://x"); err != nil {
+		t.Fatalf("Rec: %v", err)
+	}
+
+	entries, err := c.QueryEntries(context.Background(), journal.Filter{})
+	if err != nil {
+		t.Fatalf("QueryEntries: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d; want 1", len(entries))
+	}
+	if entries[0].IID != 7 || entries[0].Title != "title" || entries[0].URL != "http://x" {
+		t.Errorf("entry mismatch: %#v", entries[0])
+	}
+}
+
+// TestClient_Rec_StateRecordError verifies that Rec returns an error when the
+// state store is closed, without attempting to write to the legacy journal.
+func TestClient_Rec_StateRecordError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "[]")
+	}))
+	defer srv.Close()
+
+	cfg := testCfg(t, srv.URL, "tok", false)
+	c, err := client.New(cfg)
+	if err != nil {
+		t.Fatalf("client.New: %v", err)
+	}
+	c.Close()
+
+	if err := c.Rec(journal.OpCreate, journal.EntityIssue, "p", "", 1, 1, "t", "url"); err == nil {
+		t.Fatal("expected Rec error after state closed")
+	}
+	if err := c.RecErr(journal.OpCreate, journal.EntityIssue, "p", "", "boom"); err == nil {
+		t.Fatal("expected RecErr error after state closed")
+	}
+}
+
+// TestClient_QueryEntries_FallbackToJournal verifies the JSONL fallback path
+// used when the SQLite projection has no entries.
+func TestClient_QueryEntries_FallbackToJournal(t *testing.T) {
+	dir := t.TempDir()
+	jpath := filepath.Join(dir, "journal.jsonl")
+	e := journal.Entry{ID: "legacy-1", Host: "fallback.local", Op: journal.OpCreate, Entity: journal.EntityIssue, Project: "g/p", Outcome: journal.OutcomeOK}
+	b, _ := json.Marshal(e)
+	if err := os.WriteFile(jpath, append(b, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := state.Open(filepath.Join(dir, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	j, err := journal.Open(jpath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c := &client.Client{State: s, Journal: j}
+	entries, err := c.QueryEntries(context.Background(), journal.Filter{})
+	if err != nil {
+		t.Fatalf("QueryEntries: %v", err)
+	}
+	if len(entries) != 1 || entries[0].ID != "legacy-1" {
+		t.Fatalf("fallback entries = %d, want 1 legacy-1: %#v", len(entries), entries)
+	}
+}
+
+// TestClient_QueryEntries_StateError verifies that QueryEntries surfaces state
+// store errors instead of falling back.
+func TestClient_QueryEntries_StateError(t *testing.T) {
+	dir := t.TempDir()
+	s, err := state.Open(filepath.Join(dir, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	j, err := journal.Open(filepath.Join(dir, "journal.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c := &client.Client{State: s, Journal: j}
+	if _, err := c.QueryEntries(context.Background(), journal.Filter{}); err == nil {
+		t.Fatal("expected QueryEntries error after state closed")
+	}
+}
+
+// TestClient_New_JournalOpenError verifies that New fails when the journal
+// parent directory cannot be created.
+func TestClient_New_JournalOpenError(t *testing.T) {
+	dir := t.TempDir()
+	ro := filepath.Join(dir, "ro")
+	if err := os.Mkdir(ro, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(ro, 0o755) })
+
+	cfg := &config.Config{
+		Host:        "h",
+		GitLabURL:   "http://example.com",
+		Token:       "tok",
+		JournalPath: filepath.Join(ro, "j.jsonl"),
+		CachePath:   filepath.Join(dir, "cache"),
+		StatePath:   filepath.Join(dir, "state.db"),
+	}
+	if _, err := client.New(cfg); err == nil {
+		t.Fatal("expected New error for unwritable journal parent")
+	}
+}
+
+// TestClient_New_StateOpenError verifies that New fails when the state parent
+// directory cannot be created.
+func TestClient_New_StateOpenError(t *testing.T) {
+	dir := t.TempDir()
+	ro := filepath.Join(dir, "rostate")
+	if err := os.Mkdir(ro, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(ro, 0o755) })
+
+	cfg := &config.Config{
+		Host:        "h",
+		GitLabURL:   "http://example.com",
+		Token:       "tok",
+		JournalPath: filepath.Join(dir, "j.jsonl"),
+		CachePath:   filepath.Join(dir, "cache"),
+		StatePath:   filepath.Join(ro, "state.db"),
+	}
+	if _, err := client.New(cfg); err == nil {
+		t.Fatal("expected New error for unwritable state parent")
+	}
+}
+
+// TestClient_New_ProviderError verifies that New fails and closes the state
+// store when providerfactory returns an unknown provider.
+func TestClient_New_ProviderError(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Host:        "h",
+		Provider:    "unknown",
+		GitLabURL:   "http://example.com",
+		Token:       "tok",
+		JournalPath: filepath.Join(dir, "j.jsonl"),
+		CachePath:   filepath.Join(dir, "cache"),
+		StatePath:   filepath.Join(dir, "state.db"),
+	}
+	if _, err := client.New(cfg); err == nil {
+		t.Fatal("expected New error for unknown provider")
+	}
+}
+
+// TestClient_New_GitLabClientError verifies that New fails and closes the state
+// store when an invalid GitLab base URL prevents go-gitlab client creation.
+func TestClient_New_GitLabClientError(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Host:        "h",
+		Provider:    "gitlab",
+		GitLabURL:   "://not-a-url",
+		Token:       "tok",
+		JournalPath: filepath.Join(dir, "j.jsonl"),
+		CachePath:   filepath.Join(dir, "cache"),
+		StatePath:   filepath.Join(dir, "state.db"),
+	}
+	if _, err := client.New(cfg); err == nil {
+		t.Fatal("expected New error for invalid GitLab URL")
 	}
 }

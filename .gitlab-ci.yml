@@ -26,11 +26,7 @@ test:
   script:
     - go test ./... -coverprofile=cover.out -covermode=atomic
     - go tool cover -func=cover.out | tee coverage.txt
-    - |
-      total=$(awk '/^total:/ {gsub("%","",$3); print $3}' coverage.txt)
-      echo "total coverage: ${total}% (gate: ${MIN_COVERAGE}%)"
-      awk -v t="$total" -v g="$MIN_COVERAGE" 'BEGIN { exit !(t+0 >= g+0) }' \
-        || { echo "FAIL: coverage ${total}% < ${MIN_COVERAGE}% gate"; exit 1; }
+    - bash scripts/coverage-check.sh coverage.txt .coverage-floors
   coverage: '/total:\s+\(statements\)\s+\d+\.\d+%/'
   artifacts:
     paths: [cover.out, coverage.txt]

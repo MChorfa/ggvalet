@@ -102,6 +102,17 @@ CREATE TABLE IF NOT EXISTS receipt_events (
  FOREIGN KEY(operation_id) REFERENCES operations(id)
 );
 CREATE INDEX IF NOT EXISTS receipt_events_operation ON receipt_events(operation_id, occurred_at);
+CREATE TABLE IF NOT EXISTS journal_entries (
+ id TEXT PRIMARY KEY, host TEXT NOT NULL, op TEXT NOT NULL, entity TEXT NOT NULL,
+ project TEXT NOT NULL DEFAULT '', group_path TEXT NOT NULL DEFAULT '',
+ entity_id INTEGER NOT NULL DEFAULT 0, iid INTEGER NOT NULL DEFAULT 0,
+ title TEXT NOT NULL DEFAULT '', url TEXT NOT NULL DEFAULT '',
+ outcome TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]',
+ timestamp TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS journal_entries_time ON journal_entries(timestamp);
+CREATE INDEX IF NOT EXISTS journal_entries_host ON journal_entries(host);
+CREATE INDEX IF NOT EXISTS journal_entries_outcome ON journal_entries(outcome);
 CREATE TABLE IF NOT EXISTS plan_runs (
  id TEXT PRIMARY KEY, target_key TEXT NOT NULL, provider TEXT NOT NULL,
  plan_json TEXT NOT NULL, status TEXT NOT NULL, error TEXT NOT NULL DEFAULT '',

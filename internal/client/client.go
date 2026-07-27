@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"time"
 
 	"github.com/MChorfa/ggvalet/internal/cache"
 	"github.com/MChorfa/ggvalet/internal/config"
@@ -15,6 +16,7 @@ import (
 	"github.com/MChorfa/ggvalet/internal/provider"
 	"github.com/MChorfa/ggvalet/internal/providerfactory"
 	"github.com/MChorfa/ggvalet/internal/state"
+	"github.com/google/uuid"
 	gl "github.com/xanzy/go-gitlab"
 )
 
@@ -52,6 +54,10 @@ func New(cfg *config.Config) (*Client, error) {
 	if err := stateStore.ImportLegacy(context.Background(), cfg.JournalPath); err != nil {
 		stateStore.Close()
 		return nil, fmt.Errorf("client: import legacy journal: %w", err)
+	}
+	if err := stateStore.BackfillJournalEntries(context.Background(), cfg.JournalPath); err != nil {
+		stateStore.Close()
+		return nil, fmt.Errorf("client: backfill journal projection: %w", err)
 	}
 
 	// Select the provider implementation from cfg.Provider / GLVALET_PROVIDER
@@ -101,19 +107,42 @@ func (c *Client) CacheKey(path, params string) string {
 
 func (c *Client) Rec(op journal.Op, entity journal.Entity, project, group string,
 	entityID, iid int, title, url string, tags ...string) error {
-	return c.Journal.Record(journal.Entry{
-		Host: c.cfg.Host, Op: op, Entity: entity,
+	e := journal.Entry{
+		ID: uuid.NewString(), Host: c.cfg.Host, Op: op, Entity: entity,
 		Project: project, Group: group,
 		EntityID: entityID, IID: iid,
 		Title: title, URL: url,
 		Outcome: journal.OutcomeOK, Tags: tags,
-	})
+		Timestamp: time.Now().UTC(),
+	}
+	if err := c.State.RecordEntry(context.Background(), e); err != nil {
+		return fmt.Errorf("state record: %w", err)
+	}
+	return c.Journal.Record(e)
 }
 
 func (c *Client) RecErr(op journal.Op, entity journal.Entity, project, group, detail string) error {
-	return c.Journal.Record(journal.Entry{
-		Host: c.cfg.Host, Op: op, Entity: entity,
+	e := journal.Entry{
+		ID: uuid.NewString(), Host: c.cfg.Host, Op: op, Entity: entity,
 		Project: project, Group: group,
 		Outcome: journal.OutcomeErr, Detail: detail,
-	})
+		Timestamp: time.Now().UTC(),
+	}
+	if err := c.State.RecordEntry(context.Background(), e); err != nil {
+		return fmt.Errorf("state record: %w", err)
+	}
+	return c.Journal.Record(e)
+}
+
+// QueryEntries returns journal entries from the SQLite projection when available,
+// falling back to the legacy JSONL journal for older state files.
+func (c *Client) QueryEntries(ctx context.Context, f journal.Filter) ([]journal.Entry, error) {
+	has, err := c.State.HasEntries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if has {
+		return c.State.QueryEntries(ctx, f)
+	}
+	return c.Journal.Query(f)
 }

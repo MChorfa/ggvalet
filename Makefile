@@ -21,14 +21,11 @@ install:
 test:
 	go test ./...
 
-# Full suite + coverage profile + 80% gate (mirrors the CI `test` job).
+# Full suite + coverage profile + per-package + 80% total gate (P-VW-005).
 cover:
 	go test ./... -coverprofile=cover.out -covermode=atomic
 	go tool cover -func=cover.out | tee coverage.txt
-	@total=$$(awk '/^total:/ {gsub("%","",$$3); print $$3}' coverage.txt); \
-	echo "total coverage: $$total% (gate: 80%)"; \
-	awk -v t="$$total" 'BEGIN { exit !(t+0 >= 80.0) }' \
-		|| { echo "FAIL: coverage $$total% < 80%"; exit 1; }
+	bash scripts/coverage-check.sh coverage.txt .coverage-floors
 
 # P19 trust/reconciliation slice. This does not replace the repository-wide
 # `cover` gate; it proves the newly introduced critical path independently.

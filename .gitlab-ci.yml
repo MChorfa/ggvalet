@@ -32,6 +32,18 @@ test:
     paths: [cover.out, coverage.txt]
     expire_in: 30 days
 
+# ── verify: generated docs and build-site script lint (P-VW-004) ───────────
+docs:
+  stage: verify
+  image: $GO_IMAGE
+  script:
+    - go build -o ggvalet .
+    - bash -n scripts/build-site.sh
+    - GGVALET_BIN=./ggvalet bash scripts/generate-commands-md.sh
+  artifacts:
+    paths: [pages/docs/commands.md]
+    expire_in: 1 week
+
 # ── test: dependency resolution + tidy drift (P-VW-008) ────────────────────
 deps:
   stage: test
@@ -117,6 +129,8 @@ pages:
   stage: release
   image: python:3.12-slim
   needs:
+    - job: docs
+      artifacts: true
     - job: release
       artifacts: true
       optional: true

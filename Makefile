@@ -6,7 +6,7 @@ DIST := dist
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.0.0-dev")
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
 
-.PHONY: all build install test cover cover-p19 vwp govulncheck regression fmt vet clean tidy cross checksums sbom release release-dry release-publish goreleaser-check site attest-sign
+.PHONY: all build install test cover cover-p19 vwp govulncheck regression fmt vet clean tidy cross checksums sbom release release-dry release-publish goreleaser-check site docs site-lint commands-reference attest-sign
 
 all: tidy fmt vet build
 
@@ -125,3 +125,14 @@ release-publish:
 # Build the static documentation site for local preview.
 site:
 	bash scripts/build-site.sh --output site
+
+# Generate the commands reference, build the site, and lint the build script.
+docs: build commands-reference site
+	bash -n scripts/build-site.sh
+
+commands-reference: build
+	GGVALET_BIN=./ggvalet bash scripts/generate-commands-md.sh
+
+# Lint the build-site script and prove the site can be generated.
+site-lint: site
+	bash -n scripts/build-site.sh

@@ -1,9 +1,10 @@
 # VWP Self-Attestation — ggvalet (`ggvalet`)
 
-- **Generated:** 2026-07-15 (supersedes the 2026-06-02 P0–P18 attestation)
+- **Generated:** 2026-07-26 (supersedes the 2026-07-15 P0–P19 attestation)
 - **Source spec:** CKODEX VWP v0.1 §26.E (`CLAUDE.md`)
-- **Scope:** Phases P0–P19 of the ggvalet implementation, including the
-  GitLab-first work reconciler and durable receipt substrate.
+- **Scope:** Phases P0–P20 of the ggvalet implementation, including the
+  GitLab-first work reconciler, durable receipt substrate, and Wave 2 coverage
+  and documentation hardening.
 - **Self-signing:** unsigned in-repo; `make attest-sign` cosign-signs this file
   (keyless in CI via `SIGSTORE_ID_TOKEN`). Signing executes at the GA tag, alongside
   the release artifacts (DEF-02, P17).
@@ -42,6 +43,7 @@
 | P17 | Release pipeline: `make checksums`/`sbom`/`release` targets + tag-driven CI `release` stage (cosign keyless via GitLab OIDC). Local assembly verified (5 cross binaries + verified SHA256SUMS + valid CycloneDX SBOM, 220 components); cosign sign/verify runs on first tag | C (assembly) / S (signing) |
 | P18 | GA cutover: `ggvalet --version` wired (`main.version` ldflag now has a symbol; Cobra `--version`/`-v`); README host-capability matrix + cosign-verify docs + stale "not routed" claim corrected; `journal_test.go` root-skip removed (de-skipped via ENOTDIR, runs everywhere); `docs/milestone-ga.md` + `make attest-sign` | C |
 | P19 | SQLite intent/outcome receipts, one-time JSONL import/export, plan-v2 dependency graph, GitLab epic linkage, and stop-and-resume reconciliation | C |
+| P20 | Per-package coverage gates, SQLite-backed journal/report/standup/tui queries, generated command reference, Dependabot, and security policy | C |
 | DEF-01 | `client.New` flag/env routing to the selected provider | **C (done in P8)** |
 | DEF-02 | Signed release artifacts (cosign + SBOM) | **pipeline C / signature S (P17)** |
 | DEF-03 | BPL (back-propagation lineage) for promotion-critical artifacts | A |
@@ -314,6 +316,42 @@ evidence_refs:
     path:  docs/milestone-reconciler.md
 stubs_remaining:  4
 deferred:         ["GitHub reconciliation", "automatic rollback", "autonomous convergence"]
+```
+
+```yaml
+capability_id:    p20-wave2-coverage-and-docs
+claim:            Per-package coverage floors enforced by scripts/coverage-check.sh and .coverage-floors; journal/report/standup/tui commands query a SQLite journal_entries projection with JSONL backfill and fallback; make docs generates pages/docs/commands.md and the static site; Dependabot and docs/SECURITY.md added.
+classification:   C
+evidence_refs:
+  - kind:  test_output
+    hash:  686293686ce63deef9ce52c082f9a5fa5181e549531a0485d2776300f352a63a
+    path:  docs/evidence/p20-wave2-coverage.txt
+  - kind:  test_output
+    hash:  8bccc87dd952455d75459289e9ceef2b93b0fb13e36cb56970834bcbd326bec9
+    path:  docs/evidence/p20-wave2-p19-coverage.txt
+  - kind:  artifact
+    hash:  ~
+    path:  scripts/coverage-check.sh
+  - kind:  artifact
+    hash:  ~
+    path:  .coverage-floors
+  - kind:  artifact
+    hash:  ~
+    path:  internal/state/entries.go
+  - kind:  artifact
+    hash:  ~
+    path:  internal/client/client.go
+  - kind:  artifact
+    hash:  ~
+    path:  scripts/generate-commands-md.sh
+  - kind:  artifact
+    hash:  ~
+    path:  docs/SECURITY.md
+  - kind:  artifact
+    hash:  ~
+    path:  .github/dependabot.yml
+stubs_remaining:  0
+deferred:         []
 ```
 
 ## Stubs remaining

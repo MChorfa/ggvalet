@@ -20,6 +20,7 @@ vendor/
 
 # Local runtime data
 .ggvalet/
+.bin/
 
 # Editor
 .vscode/

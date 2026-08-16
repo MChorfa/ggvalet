@@ -34,6 +34,7 @@ const (
 	OpCancel   Op = "cancel"
 	OpView     Op = "view"
 	OpDownload Op = "download"
+	OpRotate   Op = "rotate"
 )
 
 // Entity describes the GitLab resource type.
@@ -50,6 +51,8 @@ const (
 	EntityPipeline  Entity = "pipeline"
 	EntityJob       Entity = "job"
 	EntityArtifact  Entity = "artifact"
+	EntityToken     Entity = "token"
+	EntitySSHKey    Entity = "sshkey"
 )
 
 // Outcome is the terminal state of the operation.

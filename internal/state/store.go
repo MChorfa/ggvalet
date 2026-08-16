@@ -127,6 +127,9 @@ CREATE TABLE IF NOT EXISTS plan_steps (
  error TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL,
  PRIMARY KEY(run_id, step_id),
  FOREIGN KEY(run_id) REFERENCES plan_runs(id)
+);
+CREATE TABLE IF NOT EXISTS rotation_state (
+ host TEXT PRIMARY KEY, last_rotated_at TEXT NOT NULL
 );`
 	if _, err := s.db.Exec(schema); err != nil {
 		return fmt.Errorf("state migrate: %w", err)
@@ -390,4 +393,31 @@ func (s *Store) SetStep(ctx context.Context, runID, stepID, status string, remot
  WHERE run_id=? AND step_id=?`, status, remoteID, remoteIID, webURL, detail,
 		time.Now().UTC().Format(time.RFC3339Nano), runID, stepID)
 	return err
+}
+
+// SetLastRotated records a successful rotation for host.
+func (s *Store) SetLastRotated(host string, at time.Time) error {
+	_, err := s.db.Exec(
+		`INSERT INTO rotation_state (host, last_rotated_at) VALUES (?, ?)
+		 ON CONFLICT(host) DO UPDATE SET last_rotated_at = excluded.last_rotated_at`,
+		host, at.UTC().Format(time.RFC3339))
+	return err
+}
+
+// LastRotated returns the last successful rotation for host. ok is false when
+// the host has never been rotated.
+func (s *Store) LastRotated(host string) (time.Time, bool, error) {
+	var raw string
+	err := s.db.QueryRow(`SELECT last_rotated_at FROM rotation_state WHERE host = ?`, host).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return t, true, nil
 }

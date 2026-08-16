@@ -95,7 +95,14 @@ func (r *Rotator) warn(format string, args ...any) {
 func (r *Rotator) Rotate(ctx context.Context, host string, opt Options) (*Result, error) {
 	res := &Result{Host: host, Phase: PhasePreflight}
 
-	// ── Phase 0: preflight. Mutates nothing. ──────────────────────────────
+	// ── Phase 0: preflight. Mutates nothing but its own leftovers. ────────
+	// A probe copy carries every host's live token; the defer that removes it
+	// does not run on a SIGKILL, and nothing else in the tool would ever clean
+	// one up.
+	for _, name := range sweepStaleProbes(filepath.Dir(opt.ConfigPath)) {
+		r.warn("removed a stale preflight copy of the credential file: %s", name)
+	}
+
 	existing, skipped, err := ListEscrows(opt.EscrowDir)
 	if err != nil {
 		return res, fmt.Errorf("preflight %s: reading escrow dir: %w", host, err)
@@ -302,6 +309,29 @@ func configHasToken(path, host, token string) (bool, error) {
 	return idx >= 0 && value == token, nil
 }
 
+// probePrefix marks the throwaway config copies made by probeConfigWritable.
+const probePrefix = ".ggvalet-preflight-"
+
+// sweepStaleProbes deletes leftover probe copies in dir and returns the names
+// it removed. Deleting a probe that a concurrent run is still using is safe:
+// that run's preflight fails, which is the harmless direction.
+func sweepStaleProbes(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var swept []string
+	for _, en := range entries {
+		if en.IsDir() || !strings.HasPrefix(en.Name(), probePrefix) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, en.Name())); err == nil {
+			swept = append(swept, en.Name())
+		}
+	}
+	return swept
+}
+
 // probeConfigWritable proves, without touching the real config, that the token
 // line for host exists and that the commit phase would succeed: it copies the
 // config to a sibling temp file and runs the real writer against the copy.
@@ -313,7 +343,7 @@ func probeConfigWritable(path, host string) error {
 		return err
 	}
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".ggvalet-preflight-*")
+	tmp, err := os.CreateTemp(dir, probePrefix+"*")
 	if err != nil {
 		return fmt.Errorf("config directory %s is not writable: %w", dir, err)
 	}

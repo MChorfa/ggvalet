@@ -258,6 +258,35 @@ func TestRotate_PreflightRejectsHostMissingFromConfig(t *testing.T) {
 	}
 }
 
+// A probe copy holds every host's live token. The defer removes it on every
+// error path, but not on a SIGKILL — so preflight sweeps whatever a previous
+// run left behind, the same way it surveys the escrow directory.
+func TestRotate_PreflightSweepsStaleProbeCopies(t *testing.T) {
+	r, log, cfgPath, escrowDir := newTestRotator(t, "")
+	cfgDir := filepath.Dir(cfgPath)
+	stale := filepath.Join(cfgDir, ".ggvalet-preflight-abandoned")
+	if err := os.WriteFile(stale, []byte("hosts:\n    h:\n        token: leftover\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unrelated := filepath.Join(cfgDir, "config.yml.bak")
+	if err := os.WriteFile(unrelated, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := r.Rotate(context.Background(), testHost, testOptions(escrowDir, cfgPath)); err != nil {
+		t.Fatalf("Rotate: %v", err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale probe copy not swept: %v", err)
+	}
+	if _, err := os.Stat(unrelated); err != nil {
+		t.Errorf("the sweep must only touch its own probe files: %v", err)
+	}
+	if len(log.warnings) == 0 {
+		t.Error("sweeping a leftover copy of the credential file must be surfaced")
+	}
+}
+
 // An uncommitted escrow means a previous run died mid-rotation. Rotating again
 // would revoke the token the operator has not yet recovered.
 func TestRotate_ExistingEscrowBlocksSecondRotation(t *testing.T) {

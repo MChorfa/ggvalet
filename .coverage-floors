@@ -13,4 +13,5 @@ internal/provider/gitlab 88.0
 internal/providerfactory 100.0
 internal/reconcile 75.0
 internal/report 95.0
+internal/rotation 76.0
 internal/state 84.0

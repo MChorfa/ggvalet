@@ -1,6 +1,7 @@
 package rotation
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -48,6 +49,76 @@ func TestPropose_NeverAssumesSSH(t *testing.T) {
 		}
 		if !c.Uses(h, "pat") {
 			t.Errorf("%s: pat should be proposed", h)
+		}
+	}
+}
+
+func TestSave_RoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "rotation.yaml")
+
+	// Create a Config with explicit values
+	original := &Config{
+		Version: 1,
+		Defaults: Defaults{
+			CadenceDays:   30,
+			PATExpiryDays: 65,
+		},
+		Hosts: map[string]Profile{
+			"gitlab.example.com": {Credentials: []string{"pat", "ssh"}},
+			"other.example.com":  {Credentials: []string{"pat"}},
+		},
+	}
+
+	// Save it
+	if err := Save(p, original); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Verify file permissions are 0600
+	info, err := os.Stat(p)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("file mode: got %o, want 0600", info.Mode().Perm())
+	}
+
+	// Load it back
+	loaded, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// Verify all fields round-trip
+	if loaded.Version != original.Version {
+		t.Errorf("Version: got %d, want %d", loaded.Version, original.Version)
+	}
+	if loaded.Defaults.CadenceDays != original.Defaults.CadenceDays {
+		t.Errorf("CadenceDays: got %d, want %d", loaded.Defaults.CadenceDays, original.Defaults.CadenceDays)
+	}
+	if loaded.Defaults.PATExpiryDays != original.Defaults.PATExpiryDays {
+		t.Errorf("PATExpiryDays: got %d, want %d", loaded.Defaults.PATExpiryDays, original.Defaults.PATExpiryDays)
+	}
+
+	// Verify Hosts map round-trips
+	if len(loaded.Hosts) != len(original.Hosts) {
+		t.Errorf("Hosts count: got %d, want %d", len(loaded.Hosts), len(original.Hosts))
+	}
+	for host, origProfile := range original.Hosts {
+		loadedProfile, ok := loaded.Hosts[host]
+		if !ok {
+			t.Errorf("host %q missing in loaded config", host)
+			continue
+		}
+		if len(loadedProfile.Credentials) != len(origProfile.Credentials) {
+			t.Errorf("host %q credentials count: got %d, want %d", host, len(loadedProfile.Credentials), len(origProfile.Credentials))
+			continue
+		}
+		for i, cred := range origProfile.Credentials {
+			if loadedProfile.Credentials[i] != cred {
+				t.Errorf("host %q credential[%d]: got %q, want %q", host, i, loadedProfile.Credentials[i], cred)
+			}
 		}
 	}
 }

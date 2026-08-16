@@ -194,7 +194,7 @@ func (r *Rotator) finish(ctx context.Context, esc *Escrow, res *Result) (*Result
 	}
 
 	res.Phase = PhaseCommit
-	committed, err := configHasToken(esc.ConfigPath, esc.NewToken)
+	committed, err := configHasToken(esc.ConfigPath, esc.Host, esc.NewToken)
 	if err != nil {
 		return res, fmt.Errorf("commit %s: %w", esc.Host, err)
 	}
@@ -281,15 +281,20 @@ func (r *Rotator) isDue(host string, opt Options) (bool, error) {
 	return !r.Deps.Now().Before(last.AddDate(0, 0, cadence)), nil
 }
 
-// configHasToken reports whether path already carries token on a `token:` line.
-// It is how recovery stays idempotent after a commit that succeeded before a
-// later phase failed.
-func configHasToken(path, token string) (bool, error) {
+// configHasToken reports whether host's own `token:` line in path already
+// carries token. It is how recovery stays idempotent after a commit that
+// succeeded before a later phase failed.
+//
+// The check is scoped to the host's block on purpose. A whole-file match would
+// return true for the same value sitting under a different host, which would
+// skip the commit, delete the escrow, and destroy the only copy of the secret.
+func configHasToken(path, host, token string) (bool, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return false, err
 	}
-	return strings.Contains(string(b), "token: "+token), nil
+	idx, _, value := findHostToken(strings.Split(string(b), "\n"), host)
+	return idx >= 0 && value == token, nil
 }
 
 // probeConfigWritable proves, without touching the real config, that the token

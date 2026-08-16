@@ -520,6 +520,49 @@ func TestRecoverIn_FallsBackToSuppliedConfigPath(t *testing.T) {
 	}
 }
 
+// The already-committed short-circuit must be scoped to the host's own block.
+// If a value under some other host satisfied it, the commit would be skipped,
+// the escrow deleted, and the only copy of the secret lost.
+func TestRecoverIn_TokenUnderADifferentHostIsNotACommit(t *testing.T) {
+	crossHostFixture := `hosts:
+    sc01-trt.example.ca:
+        api_protocol: https
+        token: ` + newSecret + `
+    gitlab.example.com:
+        api_protocol: https
+        token: some-older-value
+`
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(cfgPath, []byte(crossHostFixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	escrowDir := filepath.Join(dir, "escrow")
+	digest, err := FileDigest(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteEscrow(escrowDir, &Escrow{
+		Version: 1, Host: testHost, State: StateRotated,
+		OldTokenID: 1, NewTokenID: 2, NewToken: newSecret,
+		ConfigPath: cfgPath, ConfigSHA256: digest,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	r, log, _, _ := newTestRotator(t, "")
+	if _, err := r.RecoverIn(context.Background(), escrowDir, cfgPath); err != nil {
+		t.Fatalf("RecoverIn: %v", err)
+	}
+	if log.setCalls != 1 {
+		t.Fatalf("the target host still needs the token written: want 1 write, got %d", log.setCalls)
+	}
+	b, _ := os.ReadFile(cfgPath)
+	if n := strings.Count(string(b), "token: "+newSecret); n != 2 {
+		t.Errorf("want the token on both hosts' lines, found %d:\n%s", n, b)
+	}
+}
+
 // One bad escrow must not strand the others.
 func TestRecoverIn_ContinuesAfterAFailingEscrow(t *testing.T) {
 	dir := t.TempDir()

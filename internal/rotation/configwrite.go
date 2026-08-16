@@ -18,27 +18,27 @@ func FileDigest(path string) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// SetHostToken rewrites exactly one line: the `token:` field inside host's
-// block. It walks by indentation rather than matching a regex globally,
-// because every host block contains a `token:` line.
-func SetHostToken(path, host, token string) error {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	lines := strings.Split(string(b), "\n")
-
+// findHostToken locates the `token:` line belonging to host inside the top-level
+// `hosts:` block and reports its line index, its indentation, and the value
+// already on it. idx is -1 when host has no token line.
+//
+// It walks by indentation rather than matching a regex globally, because every
+// host block contains a `token:` line. Both the writer and the
+// already-committed check go through here: two parsers over the same file would
+// be free to disagree, and disagreeing about whether a token is already
+// committed is how a secret gets dropped.
+func findHostToken(lines []string, host string) (idx, indent int, value string) {
 	inHosts, inTarget := false, false
-	hostIndent, updated := -1, false
+	hostIndent := -1
 
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		indent := len(line) - len(strings.TrimLeft(line, " "))
+		lineIndent := len(line) - len(strings.TrimLeft(line, " "))
 
-		if indent == 0 {
+		if lineIndent == 0 {
 			inHosts = trimmed == "hosts:"
 			inTarget = false
 			continue
@@ -47,22 +47,34 @@ func SetHostToken(path, host, token string) error {
 			continue
 		}
 		// A host key is the first indent level inside `hosts:`.
-		if hostIndent == -1 || indent == hostIndent {
+		if hostIndent == -1 || lineIndent == hostIndent {
 			if strings.HasSuffix(trimmed, ":") && !strings.Contains(trimmed, ": ") {
-				hostIndent = indent
+				hostIndent = lineIndent
 				inTarget = strings.TrimSuffix(trimmed, ":") == host
 				continue
 			}
 		}
-		if inTarget && indent > hostIndent && strings.HasPrefix(trimmed, "token:") {
-			lines[i] = fmt.Sprintf("%stoken: %s", strings.Repeat(" ", indent), token)
-			updated = true
-			break
+		if inTarget && lineIndent > hostIndent && strings.HasPrefix(trimmed, "token:") {
+			return i, lineIndent, strings.TrimSpace(strings.TrimPrefix(trimmed, "token:"))
 		}
 	}
-	if !updated {
+	return -1, 0, ""
+}
+
+// SetHostToken rewrites exactly one line: the `token:` field inside host's
+// block.
+func SetHostToken(path, host, token string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(b), "\n")
+
+	idx, indent, _ := findHostToken(lines, host)
+	if idx < 0 {
 		return fmt.Errorf("no token line found for host %q in %s", host, path)
 	}
+	lines[idx] = fmt.Sprintf("%stoken: %s", strings.Repeat(" ", indent), token)
 
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".config.yml.tmp-*")

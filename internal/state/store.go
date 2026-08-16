@@ -396,8 +396,8 @@ func (s *Store) SetStep(ctx context.Context, runID, stepID, status string, remot
 }
 
 // SetLastRotated records a successful rotation for host.
-func (s *Store) SetLastRotated(host string, at time.Time) error {
-	_, err := s.db.Exec(
+func (s *Store) SetLastRotated(ctx context.Context, host string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO rotation_state (host, last_rotated_at) VALUES (?, ?)
 		 ON CONFLICT(host) DO UPDATE SET last_rotated_at = excluded.last_rotated_at`,
 		host, at.UTC().Format(time.RFC3339))
@@ -406,10 +406,10 @@ func (s *Store) SetLastRotated(host string, at time.Time) error {
 
 // LastRotated returns the last successful rotation for host. ok is false when
 // the host has never been rotated.
-func (s *Store) LastRotated(host string) (time.Time, bool, error) {
+func (s *Store) LastRotated(ctx context.Context, host string) (time.Time, bool, error) {
 	var raw string
-	err := s.db.QueryRow(`SELECT last_rotated_at FROM rotation_state WHERE host = ?`, host).Scan(&raw)
-	if err == sql.ErrNoRows {
+	err := s.db.QueryRowContext(ctx, `SELECT last_rotated_at FROM rotation_state WHERE host = ?`, host).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
 		return time.Time{}, false, nil
 	}
 	if err != nil {

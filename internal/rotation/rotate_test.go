@@ -476,6 +476,42 @@ func TestRecoverIn_SkipsWriteWhenConfigAlreadyHasToken(t *testing.T) {
 	}
 }
 
+// An escrow with no digest cannot be checked for concurrent edits, so the
+// commit overwrites unconditionally. That is deliberate, but it must not be
+// silent.
+func TestRecoverIn_MissingDigestWarnsBeforeOverwriting(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(cfgPath, []byte(twoHostFixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	escrowDir := filepath.Join(dir, "escrow")
+	if _, err := WriteEscrow(escrowDir, &Escrow{
+		Version: 1, Host: testHost, State: StateRotated,
+		OldTokenID: 1, NewTokenID: 2, NewToken: newSecret,
+		ConfigPath: cfgPath, // no ConfigSHA256
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	r, log, _, _ := newTestRotator(t, "")
+	if _, err := r.RecoverIn(context.Background(), escrowDir, cfgPath); err != nil {
+		t.Fatalf("RecoverIn: %v", err)
+	}
+	if len(log.warnings) == 0 {
+		t.Error("an unchecked overwrite must be surfaced")
+	}
+	for _, w := range log.warnings {
+		if strings.Contains(w, newSecret) {
+			t.Error("warning leaked the token")
+		}
+	}
+	b, _ := os.ReadFile(cfgPath)
+	if !strings.Contains(string(b), "token: "+newSecret) {
+		t.Errorf("the commit should still have happened:\n%s", b)
+	}
+}
+
 // A corrupt escrow file is never a hard failure — it is named, and the valid
 // escrows still recover.
 func TestRecoverIn_SurfacesCorruptEscrowsAndContinues(t *testing.T) {

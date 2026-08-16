@@ -215,6 +215,12 @@ func (r *Rotator) finish(ctx context.Context, esc *Escrow, res *Result) (*Result
 		if err != nil {
 			return res, fmt.Errorf("commit %s: %w", esc.Host, err)
 		}
+		// An escrow with no digest predates — or was written without — the
+		// change-detection field, so there is nothing to compare against and
+		// the commit overwrites unconditionally. Allowed, but never silent.
+		if esc.ConfigSHA256 == "" {
+			r.warn("escrow for %s carries no config digest; committing without checking for concurrent edits", esc.Host)
+		}
 		if esc.ConfigSHA256 != "" && current != esc.ConfigSHA256 {
 			return res, fmt.Errorf(
 				"commit %s: config has changed since the rotation started; refusing to overwrite it. "+

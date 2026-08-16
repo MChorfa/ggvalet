@@ -28,6 +28,12 @@ func journalShowCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "show",
 		Short: "Show journal entries (default: last 24h)",
+		Long: `Show journal entries (default: last 24h).
+
+Reading rotate entries: a rotation interrupted after its journal write is
+replayed by ` + "`ggvalet rotate --recover`" + `, and the replay writes the entry
+again. Two rotate entries carrying the same token id are one rotation that was
+recovered, not two rotations.`,
 		Example: `  ggvalet journal show --since 7d
   ggvalet journal show --since 7d --host gitlab.thalesdigital.io
   ggvalet journal show --since 30d --entity epic

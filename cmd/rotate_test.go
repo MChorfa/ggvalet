@@ -69,6 +69,75 @@ func TestGgvaletHome_DefaultsUnderTheUserHome(t *testing.T) {
 	}
 }
 
+// F4: the record phase is not idempotent, so a recovered rotation appends a
+// second journal entry. That is only tolerable if an operator reading the
+// journal is told; both help surfaces must say so.
+func TestRotate_DuplicateJournalEntriesAreDocumented(t *testing.T) {
+	if !strings.Contains(rotateCmd().Long, "second rotate entry") {
+		t.Error("`ggvalet rotate --help` does not warn about duplicate journal entries")
+	}
+	if !strings.Contains(journalShowCmd().Long, "same token id") {
+		t.Error("`ggvalet journal show --help` does not explain duplicate rotate entries")
+	}
+}
+
+func TestRunRotate_ProposesAProfileAndRefusesToAct(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GLVALET_HOME", home)
+	t.Setenv("GLVALET_TOKEN", "test-token")
+	t.Setenv("GLVALET_GITLAB_URL", "https://gitlab.example.com")
+	t.Setenv("GLVALET_PROVIDER", "")
+	hostFlag = ""
+
+	err := runRotate(context.Background(), rotateOptions{})
+	if err == nil {
+		t.Fatal("a first run must refuse to act on a profile the operator has not reviewed")
+	}
+	if !strings.Contains(err.Error(), filepath.Join(home, "rotation.yaml")) {
+		t.Fatalf("the error must name the file to review: %v", err)
+	}
+	rc, lerr := rotation.Load(filepath.Join(home, "rotation.yaml"))
+	if lerr != nil {
+		t.Fatalf("the proposed profile should be on disk: %v", lerr)
+	}
+	if len(rc.Hosts) == 0 {
+		t.Fatal("the proposed profile lists no hosts")
+	}
+}
+
+// Drives the whole assembly — profile, state db, journal, wiring — with a host
+// that rotation.yaml lists and the glab config does not. Preflight fails before
+// any remote call, which is what makes the test deterministic offline.
+func TestRunRotate_ReportsAHostMissingFromTheGlabConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GLVALET_HOME", home)
+	t.Setenv("GLVALET_STATE", filepath.Join(home, "state.db"))
+	t.Setenv("GLVALET_JOURNAL", filepath.Join(home, "journal.jsonl"))
+	t.Setenv("GLVALET_TOKEN", "test-token")
+	t.Setenv("GLVALET_GITLAB_URL", "https://gitlab.example.com")
+	t.Setenv("GLVALET_PROVIDER", "")
+	hostFlag = ""
+	saved := cfg
+	cfg = nil
+	t.Cleanup(func() { cfg = saved })
+
+	if err := rotation.Save(filepath.Join(home, "rotation.yaml"), &rotation.Config{
+		Version: 1,
+		Hosts:   map[string]rotation.Profile{"gone.example.com": {Credentials: []string{"pat"}}},
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	silenceOutput(t)
+
+	err := runRotate(context.Background(), rotateOptions{})
+	if err == nil {
+		t.Fatal("a host that cannot be resolved must surface as an error")
+	}
+	if !strings.Contains(err.Error(), "need attention") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // ─── runner fixture ──────────────────────────────────────────────────────────
 
 const fixtureSecret = "glpat-NEW-2222222222"

@@ -380,6 +380,67 @@ func TestCheckHosts_UncommittedEscrowIsAProblem(t *testing.T) {
 	f.assertNoSecret(t)
 }
 
+func TestCheckHosts_CorruptEscrowIsSurfacedNotSwallowed(t *testing.T) {
+	f := newRotateFixture(t)
+	f.runner.lastRotated = func(string) (time.Time, bool, error) {
+		return time.Date(2026, 8, 14, 9, 0, 0, 0, time.UTC), true, nil
+	}
+	if err := os.MkdirAll(f.escrow, 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	bad := filepath.Join(f.escrow, "gitlab.example.com-truncated.json")
+	if err := os.WriteFile(bad, []byte("{not json"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := f.runner.checkHosts(false); err == nil {
+		t.Fatal("an unparseable escrow may be holding a credential; --check must fail")
+	}
+	if !strings.Contains(f.printed(), "gitlab.example.com-truncated.json") {
+		t.Fatalf("the filename must be named so it can be inspected:\n%s", f.printed())
+	}
+}
+
+func TestDue_ForceAndUnreadableStateBothCountAsDue(t *testing.T) {
+	f := newRotateFixture(t)
+	f.runner.lastRotated = func(string) (time.Time, bool, error) {
+		return time.Date(2026, 8, 14, 9, 0, 0, 0, time.UTC), true, nil
+	}
+	if due, reason := f.runner.due(testHost, true); !due || reason != "forced" {
+		t.Fatalf("due(force) = %v, %q", due, reason)
+	}
+
+	f.runner.lastRotated = func(string) (time.Time, bool, error) {
+		return time.Time{}, false, errors.New("database is locked")
+	}
+	// An unreadable state database is not evidence that a host is up to date.
+	due, reason := f.runner.due(testHost, false)
+	if !due || !strings.Contains(reason, "unreadable") {
+		t.Fatalf("due(unreadable state) = %v, %q", due, reason)
+	}
+
+	f.runner.lastRotated = nil
+	if due, _ := f.runner.due(testHost, false); !due {
+		t.Fatal("with no state source at all, a host must read as due")
+	}
+}
+
+// Rule 12: if the audit entry for a failed rotation cannot be written, that is
+// itself something the operator has to be told.
+func TestJournalFailure_SaysSoWhenItCannotRecord(t *testing.T) {
+	f := newRotateFixture(t)
+	f.runner.jrnl = brokenJournal{}
+	f.runner.journalFailure(&rotation.Result{
+		Host: testHost, Phase: rotation.PhaseCommit, Rotated: true, NewTokenID: 51630,
+	})
+	if !strings.Contains(f.errOut.String(), "could not be journalled") {
+		t.Fatalf("a failed journal write must be reported:\n%s", f.errOut.String())
+	}
+}
+
+type brokenJournal struct{}
+
+func (brokenJournal) Record(journal.Entry) error { return errors.New("disk full") }
+
 // ─── --recover ───────────────────────────────────────────────────────────────
 
 func TestRecoverAll_CommitsAnEscrowedSecret(t *testing.T) {

@@ -624,6 +624,84 @@ func TestRotator_NilWarnIsSafe(t *testing.T) {
 	}
 }
 
+func TestResult_StringOmitsTokenIDWhenNothingRotated(t *testing.T) {
+	res := &Result{Host: testHost, Phase: PhaseSkipped}
+	if got, want := res.String(), testHost+": "+PhaseSkipped; got != want {
+		t.Errorf("String() = %q, want %q", got, want)
+	}
+}
+
+// A due-check that cannot read the state DB must stop the run rather than
+// assume the host is due.
+func TestRotate_LastRotatedErrorIsAPreflightFailure(t *testing.T) {
+	r, log, cfgPath, escrowDir := newTestRotator(t, "")
+	r.Deps.LastRotated = func(host string) (time.Time, bool, error) {
+		return time.Time{}, false, errors.New("state db unreadable")
+	}
+	opt := testOptions(escrowDir, cfgPath)
+	opt.Force = false
+
+	if _, err := r.Rotate(context.Background(), testHost, opt); err == nil {
+		t.Fatal("expected the state-db error to stop the run")
+	}
+	if log.rotateCalls != 0 {
+		t.Errorf("must not rotate, got %d calls", log.rotateCalls)
+	}
+}
+
+// An escrow directory that cannot be listed means an unknown number of
+// uncommitted secrets; rotating on top of that is not safe.
+func TestRotate_UnlistableEscrowDirIsAPreflightFailure(t *testing.T) {
+	r, log, cfgPath, _ := newTestRotator(t, "")
+	blocked := filepath.Join(t.TempDir(), "escrow")
+	if err := os.WriteFile(blocked, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Rotate(context.Background(), testHost, testOptions(blocked, cfgPath)); err == nil {
+		t.Fatal("expected the unreadable escrow dir to fail preflight")
+	}
+	if log.rotateCalls != 0 {
+		t.Errorf("must not rotate, got %d calls", log.rotateCalls)
+	}
+}
+
+func TestRotate_MissingConfigIsAPreflightFailure(t *testing.T) {
+	r, log, cfgPath, escrowDir := newTestRotator(t, "")
+	if err := os.Remove(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Rotate(context.Background(), testHost, testOptions(escrowDir, cfgPath)); err == nil {
+		t.Fatal("expected a missing config to fail preflight")
+	}
+	if log.rotateCalls != 0 {
+		t.Errorf("must not rotate, got %d calls", log.rotateCalls)
+	}
+}
+
+// If the config vanishes between rotation and recovery, the escrow must
+// survive so the operator still has the secret.
+func TestRecoverIn_MissingConfigKeepsTheEscrow(t *testing.T) {
+	r, _, cfgPath, escrowDir := newTestRotator(t, "verify")
+	if _, err := r.Rotate(context.Background(), testHost, testOptions(escrowDir, cfgPath)); err == nil {
+		t.Fatal("expected the verify failure")
+	}
+	if err := os.Remove(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+
+	healthy, _, _, _ := newTestRotator(t, "")
+	results, err := healthy.RecoverIn(context.Background(), escrowDir, cfgPath)
+	if err == nil {
+		t.Fatal("expected recovery to fail with no config to write")
+	}
+	if len(results) != 0 {
+		t.Errorf("nothing recovered, got %d results", len(results))
+	}
+	if left := mustList(t, escrowDir); len(left) != 1 {
+		t.Errorf("the secret must stay escrowed, got %d records", len(left))
+	}
+}
+
 func TestResult_StringIsHumanReadable(t *testing.T) {
 	res := &Result{Host: testHost, Phase: PhaseDone, Rotated: true, NewTokenID: 51630}
 	got := res.String()

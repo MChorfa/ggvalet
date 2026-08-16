@@ -39,3 +39,6 @@ sbom.cdx.json
 *.bundle
 ggvalet-attest.key
 ggvalet-attest.pub
+
+# git worktrees for isolated plan execution
+.worktrees/

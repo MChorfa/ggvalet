@@ -650,6 +650,59 @@ func TestRotate_EscrowWriteFailureIsReportedAsCritical(t *testing.T) {
 	}
 }
 
+// WriteEscrow can fail after the file is written and fsynced — only the parent
+// directory's durability is then unconfirmed. In that case the secret IS on
+// disk, so the message must not tell the operator the credential is lost; it
+// must send them to --recover first.
+func TestRotate_EscrowDirSyncFailureStillPointsAtRecovery(t *testing.T) {
+	r, _, cfgPath, escrowDir := newTestRotator(t, "")
+	if err := os.MkdirAll(escrowDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(escrowDir, 0o700) })
+	// Drop read permission at the last possible moment: preflight's listing has
+	// already run, the escrow file can still be created and written, and only
+	// WriteEscrow's os.Open of the directory fails.
+	r.Deps.Rotate = func(ctx context.Context, host, expiresAt string) (*TokenInfo, string, error) {
+		if err := os.Chmod(escrowDir, 0o300); err != nil {
+			return nil, "", err
+		}
+		return &TokenInfo{ID: 51630, ExpiresAt: expiresAt}, newSecret, nil
+	}
+
+	res, err := r.Rotate(context.Background(), testHost, testOptions(escrowDir, cfgPath))
+	if err == nil {
+		t.Fatal("expected the escrow write to fail")
+	}
+	if res.Phase != PhaseEscrow {
+		t.Errorf("Phase = %q, want %q", res.Phase, PhaseEscrow)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "CRITICAL") {
+		t.Errorf("want CRITICAL, got %v", err)
+	}
+	if strings.Contains(msg, "credential is lost") {
+		t.Errorf("the secret may well be on disk; the message must not declare it lost: %v", err)
+	}
+	for _, want := range []string{escrowDir, "--recover"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message must name %q so the operator can look: %v", want, err)
+		}
+	}
+	if strings.Contains(msg, newSecret) {
+		t.Error("the critical error leaked the token")
+	}
+
+	// And the escrow really is there, which is the whole point of the rewording.
+	if err := os.Chmod(escrowDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	escrows := mustList(t, escrowDir)
+	if len(escrows) != 1 || escrows[0].NewToken != newSecret {
+		t.Fatalf("expected the secret to be recoverable from disk, got %d records", len(escrows))
+	}
+}
+
 // Warn is optional; a zero-valued Deps must not panic.
 func TestRotator_NilWarnIsSafe(t *testing.T) {
 	r, _, cfgPath, escrowDir := newTestRotator(t, "commit")

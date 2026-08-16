@@ -172,13 +172,18 @@ func (r *Rotator) Rotate(ctx context.Context, host string, opt Options) (*Result
 		ConfigSHA256: digest,
 	}
 	if _, err := WriteEscrow(opt.EscrowDir, esc); err != nil {
-		// The one unrecoverable outcome: the old token is revoked and the
-		// replacement exists only in memory. Say so plainly, without the
-		// secret — it must not reach a log or a terminal scrollback.
+		// The old token is revoked and the replacement may exist only in
+		// memory. "May": several of WriteEscrow's failure returns happen after
+		// the file is created and fsynced, with only the directory entry
+		// unconfirmed, and in those the secret is sitting on disk. Telling an
+		// operator it is lost would talk them out of the recovery that would
+		// have worked, so point them at the directory first. No secret in the
+		// message — this is the line most likely to reach a scrollback.
 		return res, fmt.Errorf(
-			"CRITICAL: rotated %s (new token id %d) but could not escrow the secret; "+
-				"the credential is lost and the host must be recovered by hand: %w",
-			host, newInfo.ID, err)
+			"CRITICAL: rotated %s (new token id %d) but could not confirm the escrow write. "+
+				"The replacement may still be on disk: look for %s/%s-*.json and run "+
+				"`ggvalet rotate --recover` before treating this host as lost: %w",
+			host, newInfo.ID, opt.EscrowDir, host, err)
 	}
 
 	return r.finish(ctx, esc, res)

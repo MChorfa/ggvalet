@@ -3,7 +3,6 @@ package client
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -72,10 +71,7 @@ func New(cfg *config.Config) (*Client, error) {
 
 	var glc *gl.Client
 	if cfg.Provider == "gitlab" || cfg.Provider == "" {
-		baseTransport := http.DefaultTransport.(*http.Transport).Clone()
-		if cfg.SkipTLS {
-			baseTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec
-		}
+		baseTransport := observed.BaseTransport(cfg.SkipTLS)
 		httpClient := &http.Client{Transport: &observed.Transport{
 			Base: baseTransport, Store: stateStore, Provider: "gitlab", Host: cfg.Host,
 		}}

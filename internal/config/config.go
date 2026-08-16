@@ -438,6 +438,24 @@ func loadGlabHosts() (map[string]*HostConfig, string, error) {
 	return merged, defaultHost, nil
 }
 
+// GlabConfigPath returns the config.yml that Load reads hosts from: the first
+// candidate that exists, or the highest-priority candidate when none do.
+//
+// Callers that rewrite a token in place (rotation) need the same file Load
+// read, resolved by the same search order, rather than a second guess at it.
+func GlabConfigPath() string {
+	paths := glabConfigPaths()
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	return paths[0]
+}
+
 // glabConfigPaths returns candidate config.yml paths in priority order.
 func glabConfigPaths() []string {
 	var paths []string

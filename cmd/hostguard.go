@@ -42,7 +42,15 @@ var hostNeutralLeaves = map[string]bool{
 // hostBlockedLeaves are leaves under a host-neutral prefix that still issue raw
 // GitLab-SDK calls. They override the prefix allowlist. Add entries here as
 // migration uncovers leaves that are not yet provider-based.
-var hostBlockedLeaves = map[string]bool{}
+var hostBlockedLeaves = map[string]bool{
+	// Credential rotation talks to GitLab's personal_access_tokens/self
+	// endpoints directly. Neither has a provider abstraction, and running
+	// either against a non-GitLab host would revoke nothing while reporting
+	// success. Listed explicitly so a future host-neutral prefix cannot
+	// accidentally cover them.
+	"ggvalet rotate":    true,
+	"ggvalet ssh audit": true,
+}
 
 // ensureHostNeutral fails loud when a command that still uses the raw GitLab
 // SDK (client.GL) is run under a non-GitLab provider, instead of silently

@@ -102,6 +102,7 @@ func Execute(version string) {
 		receiptCmd(),
 		planCmd(),
 		doctorCmd(),
+		rotateCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

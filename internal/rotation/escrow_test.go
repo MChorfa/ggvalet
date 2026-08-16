@@ -87,12 +87,15 @@ func TestLoadEscrow_SetsPath(t *testing.T) {
 
 func TestListEscrows_Empty(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nonexistent")
-	list, err := ListEscrows(dir)
+	list, skipped, err := ListEscrows(dir)
 	if err != nil {
 		t.Fatalf("ListEscrows: %v", err)
 	}
 	if list != nil {
 		t.Errorf("expected nil for nonexistent dir, got %v", list)
+	}
+	if skipped != nil {
+		t.Errorf("expected nil skipped for nonexistent dir, got %v", skipped)
 	}
 }
 
@@ -119,12 +122,15 @@ func TestListEscrows_Multiple(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	list, err := ListEscrows(dir)
+	list, skipped, err := ListEscrows(dir)
 	if err != nil {
 		t.Fatalf("ListEscrows: %v", err)
 	}
 	if len(list) != 2 {
 		t.Errorf("expected 2 escrows, got %d", len(list))
+	}
+	if len(skipped) != 0 {
+		t.Errorf("expected 0 skipped, got %d", len(skipped))
 	}
 	if list[0].Host != "host1.com" || list[1].Host != "host2.com" {
 		t.Errorf("unexpected escrow order or content")
@@ -160,12 +166,15 @@ func TestListEscrows_IgnoresNonJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	list, err := ListEscrows(dir)
+	list, skipped, err := ListEscrows(dir)
 	if err != nil {
 		t.Fatalf("ListEscrows: %v", err)
 	}
 	if len(list) != 1 {
 		t.Errorf("expected 1 escrow (non-JSON and dirs ignored), got %d", len(list))
+	}
+	if len(skipped) != 0 {
+		t.Errorf("expected 0 skipped, got %d: %v", len(skipped), skipped)
 	}
 }
 
@@ -277,5 +286,113 @@ func TestWriteEscrow_JSONFormat(t *testing.T) {
 	// Verify it's indented (contains newlines)
 	if string(b)[0:2] != "{\n" {
 		t.Errorf("JSON should be indented with 2-space indent")
+	}
+}
+
+func TestListEscrows_SkipsCorruptFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write a valid escrow
+	e := &Escrow{
+		Version: 1, Host: "valid.com", State: StateRotated,
+		OldTokenID: 1, NewTokenID: 2, NewToken: "token",
+		ExpiresAt: "2026-12-31",
+	}
+	_, err := WriteEscrow(dir, e)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a corrupt .json file
+	if err := os.WriteFile(filepath.Join(dir, "corrupt.json"), []byte("not valid json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// ListEscrows should return the valid escrow and skip the corrupt one
+	list, skipped, err := ListEscrows(dir)
+	if err != nil {
+		t.Fatalf("ListEscrows: %v", err)
+	}
+
+	if len(list) != 1 {
+		t.Errorf("expected 1 valid escrow, got %d", len(list))
+	}
+	if list[0].Host != "valid.com" {
+		t.Errorf("expected host valid.com, got %s", list[0].Host)
+	}
+
+	if len(skipped) != 1 {
+		t.Errorf("expected 1 skipped file, got %d", len(skipped))
+	}
+	if len(skipped) > 0 && skipped[0] != "corrupt.json" {
+		t.Errorf("expected skipped[0] to be corrupt.json, got %s", skipped[0])
+	}
+}
+
+func TestWriteEscrow_SanitizesHost(t *testing.T) {
+	dir := t.TempDir()
+
+	// Try to use a Host with directory traversal characters
+	e := &Escrow{
+		Version: 1, Host: "../escape", State: StateRotated,
+		OldTokenID: 1, NewTokenID: 2, NewToken: "token",
+		ExpiresAt: "2026-12-31",
+	}
+
+	path, err := WriteEscrow(dir, e)
+	if err != nil {
+		t.Fatalf("WriteEscrow: %v", err)
+	}
+
+	// Verify the file is within the escrow directory, not outside
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !filepath.HasPrefix(absPath, absDir) {
+		t.Errorf("escrow file should be within directory: %s not under %s", absPath, absDir)
+	}
+
+	// Verify the filename contains "escape" not "../escape"
+	filename := filepath.Base(path)
+	if filename == "" {
+		t.Fatalf("could not extract filename")
+	}
+	if filepath.HasPrefix(filename, "../") || filepath.HasPrefix(filename, "..\\") {
+		t.Errorf("filename should not start with ../: %s", filename)
+	}
+	if !filepath.HasPrefix(filename, "escape-") {
+		t.Errorf("filename should start with escape-: %s", filename)
+	}
+}
+
+func TestWriteEscrow_RejectsInvalidHost(t *testing.T) {
+	dir := t.TempDir()
+
+	tests := []struct {
+		name string
+		host string
+	}{
+		{"dot", "."},
+		{"empty", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := &Escrow{
+				Version: 1, Host: tt.host, State: StateRotated,
+				OldTokenID: 1, NewTokenID: 2, NewToken: "token",
+				ExpiresAt: "2026-12-31",
+			}
+			_, err := WriteEscrow(dir, e)
+			if err == nil {
+				t.Errorf("expected error for host %q, got nil", tt.host)
+			}
+		})
 	}
 }

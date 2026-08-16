@@ -43,7 +43,12 @@ func WriteEscrow(dir string, e *Escrow) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	name := fmt.Sprintf("%s-%d.json", e.Host, time.Now().UTC().UnixNano())
+	// Sanitize Host to prevent directory traversal (e.g., "../escape" → "escape")
+	hostSafe := filepath.Base(e.Host)
+	if hostSafe == "." || hostSafe == "" {
+		return "", fmt.Errorf("invalid host: %q", e.Host)
+	}
+	name := fmt.Sprintf("%s-%d.json", hostSafe, time.Now().UTC().UnixNano())
 	path := filepath.Join(dir, name)
 
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
@@ -88,27 +93,33 @@ func LoadEscrow(path string) (*Escrow, error) {
 	return &e, nil
 }
 
-// ListEscrows returns all escrow files in dir, or nil if the directory doesn't exist.
-func ListEscrows(dir string) ([]*Escrow, error) {
+// ListEscrows returns all escrow files in dir, skipping any that cannot be parsed.
+// Returns the list of valid escrows, the list of skipped filenames (files that existed
+// but could not be parsed), and an error only if the directory read failed.
+// Returns nil escrows and nil skipped if the directory doesn't exist.
+func ListEscrows(dir string) ([]*Escrow, []string, error) {
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var out []*Escrow
+	var skipped []string
 	for _, en := range entries {
 		if en.IsDir() || filepath.Ext(en.Name()) != ".json" {
 			continue
 		}
 		e, err := LoadEscrow(filepath.Join(dir, en.Name()))
 		if err != nil {
-			return nil, err
+			// Skip unparseable entries and record the filename
+			skipped = append(skipped, en.Name())
+			continue
 		}
 		out = append(out, e)
 	}
-	return out, nil
+	return out, skipped, nil
 }
 
 // DeleteEscrow removes an escrow file.

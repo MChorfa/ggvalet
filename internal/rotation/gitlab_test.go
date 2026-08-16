@@ -5,16 +5,14 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
 // fakeRoundTripper answers requests in-process, without opening a socket —
-// this sandbox denies bind(2), which breaks httptest.NewServer (see the
-// httptest-backed tests below). It lets doJSONWithClient's request-shaping
-// logic (path, headers, query params, decode) be validated even where a real
-// listener cannot be opened.
+// this sandbox denies bind(2), so httptest.NewServer cannot be used here. It
+// lets the request-shaping logic (path, headers, query params, decode) be
+// validated against the real exported calls.
 type fakeRoundTripper struct {
 	gotReq *http.Request
 	status int
@@ -22,6 +20,11 @@ type fakeRoundTripper struct {
 }
 
 func (f *fakeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Honour cancellation the way a real transport does, so context
+	// propagation stays testable.
+	if err := req.Context().Err(); err != nil {
+		return nil, err
+	}
 	f.gotReq = req
 	status := f.status
 	if status == 0 {
@@ -32,6 +35,18 @@ func (f *fakeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(bytes.NewBufferString(f.body)),
 	}, nil
+}
+
+// testBaseURL stands in for a GitLab instance. Nothing dials it.
+const testBaseURL = "https://gitlab.example.com"
+
+// serveFake routes the exported API calls through frt for the duration of the
+// test, restoring the real client factory afterwards.
+func serveFake(t *testing.T, frt *fakeRoundTripper) {
+	t.Helper()
+	prev := newHTTPClient
+	newHTTPClient = func(bool) *http.Client { return &http.Client{Transport: frt} }
+	t.Cleanup(func() { newHTTPClient = prev })
 }
 
 func TestDoJSONWithClient_FormsRequestAndDecodes(t *testing.T) {
@@ -113,19 +128,11 @@ func TestHTTPClient_SetsTimeoutAndTransport(t *testing.T) {
 }
 
 func TestRotateSelfToken_SendsExpiryAndReturnsSecret(t *testing.T) {
-	var gotExpiry, gotAuth, gotPath, gotMethod string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotMethod = r.Method
-		gotPath = r.URL.Path
-		gotAuth = r.Header.Get("PRIVATE-TOKEN")
-		gotExpiry = r.URL.Query().Get("expires_at")
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":51630,"name":"t","scopes":["api","self_rotate"],
-			"expires_at":"2026-10-20","active":true,"revoked":false,"token":"glpat-NEW"}`))
-	}))
-	defer srv.Close()
+	frt := &fakeRoundTripper{body: `{"id":51630,"name":"t","scopes":["api","self_rotate"],
+		"expires_at":"2026-10-20","active":true,"revoked":false,"token":"glpat-NEW"}`}
+	serveFake(t, frt)
 
-	info, secret, err := RotateSelfToken(context.Background(), srv.URL, "glpat-OLD", "2026-10-20", false)
+	info, secret, err := RotateSelfToken(context.Background(), testBaseURL, "glpat-OLD", "2026-10-20", false)
 	if err != nil {
 		t.Fatalf("RotateSelfToken: %v", err)
 	}
@@ -138,95 +145,72 @@ func TestRotateSelfToken_SendsExpiryAndReturnsSecret(t *testing.T) {
 	if !info.HasScope("self_rotate") {
 		t.Errorf("scopes = %v, want self_rotate present", info.Scopes)
 	}
-	if gotMethod != http.MethodPost {
-		t.Errorf("method = %q, want POST", gotMethod)
+	if frt.gotReq.Method != http.MethodPost {
+		t.Errorf("method = %q, want POST", frt.gotReq.Method)
 	}
-	if gotExpiry != "2026-10-20" {
-		t.Errorf("expires_at not sent, got %q", gotExpiry)
+	if got := frt.gotReq.URL.Query().Get("expires_at"); got != "2026-10-20" {
+		t.Errorf("expires_at not sent, got %q", got)
 	}
-	if gotAuth != "glpat-OLD" {
-		t.Errorf("auth header = %q", gotAuth)
+	if got := frt.gotReq.Header.Get("PRIVATE-TOKEN"); got != "glpat-OLD" {
+		t.Errorf("auth header = %q", got)
 	}
-	if gotPath != "/api/v4/personal_access_tokens/self/rotate" {
-		t.Errorf("path = %q", gotPath)
+	if frt.gotReq.URL.Path != "/api/v4/personal_access_tokens/self/rotate" {
+		t.Errorf("path = %q", frt.gotReq.URL.Path)
 	}
 }
 
 func TestRotateSelfToken_OmitsExpiryQueryWhenEmpty(t *testing.T) {
-	var sawExpiryKey bool
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, sawExpiryKey = r.URL.Query()["expires_at"]
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":1,"token":"glpat-NEW"}`))
-	}))
-	defer srv.Close()
+	frt := &fakeRoundTripper{body: `{"id":1,"token":"glpat-NEW"}`}
+	serveFake(t, frt)
 
-	if _, _, err := RotateSelfToken(context.Background(), srv.URL, "glpat-OLD", "", false); err != nil {
+	if _, _, err := RotateSelfToken(context.Background(), testBaseURL, "glpat-OLD", "", false); err != nil {
 		t.Fatalf("RotateSelfToken: %v", err)
 	}
-	if sawExpiryKey {
+	if _, sawExpiryKey := frt.gotReq.URL.Query()["expires_at"]; sawExpiryKey {
 		t.Error("expires_at query param sent despite empty expiresAt")
 	}
 }
 
 func TestRotateSelfToken_ErrorsWhenResponseCarriesNoToken(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":1,"name":"t"}`))
-	}))
-	defer srv.Close()
+	serveFake(t, &fakeRoundTripper{body: `{"id":1,"name":"t"}`})
 
-	if _, _, err := RotateSelfToken(context.Background(), srv.URL, "glpat-OLD", "", false); err == nil {
+	if _, _, err := RotateSelfToken(context.Background(), testBaseURL, "glpat-OLD", "", false); err == nil {
 		t.Fatal("expected error when rotate response carries no token")
 	}
 }
 
 func TestRotateSelfToken_ErrorsOnMalformedBody(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`not-json`))
-	}))
-	defer srv.Close()
+	serveFake(t, &fakeRoundTripper{body: `not-json`})
 
-	if _, _, err := RotateSelfToken(context.Background(), srv.URL, "glpat-OLD", "", false); err == nil {
+	if _, _, err := RotateSelfToken(context.Background(), testBaseURL, "glpat-OLD", "", false); err == nil {
 		t.Fatal("expected decode error on malformed body")
 	}
 }
 
 func TestGetSelfToken_SurfacesUnauthorized(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"message":"401 Unauthorized"}`))
-	}))
-	defer srv.Close()
+	serveFake(t, &fakeRoundTripper{status: http.StatusUnauthorized, body: `{"message":"401 Unauthorized"}`})
 
-	if _, err := GetSelfToken(context.Background(), srv.URL, "bad", false); err == nil {
+	if _, err := GetSelfToken(context.Background(), testBaseURL, "bad", false); err == nil {
 		t.Fatal("expected error on 401")
 	}
 }
 
 func TestGetSelfToken_ReturnsMetadataOnSuccess(t *testing.T) {
-	var gotPath, gotAuth string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		gotAuth = r.Header.Get("PRIVATE-TOKEN")
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":51630,"name":"t","scopes":["api"],"expires_at":"2026-10-20","active":true,"revoked":false}`))
-	}))
-	defer srv.Close()
+	frt := &fakeRoundTripper{body: `{"id":51630,"name":"t","scopes":["api"],"expires_at":"2026-10-20","active":true,"revoked":false}`}
+	serveFake(t, frt)
 
-	info, err := GetSelfToken(context.Background(), srv.URL, "glpat-CUR", false)
+	info, err := GetSelfToken(context.Background(), testBaseURL, "glpat-CUR", false)
 	if err != nil {
 		t.Fatalf("GetSelfToken: %v", err)
 	}
 	if info.ID != 51630 || info.ExpiresAt != "2026-10-20" || !info.Active || info.Revoked {
 		t.Errorf("unexpected info: %+v", info)
 	}
-	if gotAuth != "glpat-CUR" {
-		t.Errorf("auth header = %q", gotAuth)
+	if got := frt.gotReq.Header.Get("PRIVATE-TOKEN"); got != "glpat-CUR" {
+		t.Errorf("auth header = %q", got)
 	}
-	if gotPath != "/api/v4/personal_access_tokens/self" {
-		t.Errorf("path = %q", gotPath)
+	if frt.gotReq.URL.Path != "/api/v4/personal_access_tokens/self" {
+		t.Errorf("path = %q", frt.gotReq.URL.Path)
 	}
 }
 
@@ -256,14 +240,11 @@ func TestTokenInfo_HasScope(t *testing.T) {
 }
 
 func TestDoJSON_ContextCanceled(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	serveFake(t, &fakeRoundTripper{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := GetSelfToken(ctx, srv.URL, "tok", false); err == nil {
+	if _, err := GetSelfToken(ctx, testBaseURL, "tok", false); err == nil {
 		t.Fatal("expected error on canceled context")
 	} else if !strings.Contains(err.Error(), "context canceled") {
 		t.Errorf("unexpected error: %v", err)

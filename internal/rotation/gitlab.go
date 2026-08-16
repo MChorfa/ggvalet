@@ -39,8 +39,13 @@ func httpClient(skipTLS bool) *http.Client {
 	return &http.Client{Timeout: 30 * time.Second, Transport: observed.BaseTransport(skipTLS)}
 }
 
+// newHTTPClient builds the client every exported API call uses. It is a
+// variable so tests can substitute an in-process RoundTripper: the sandbox
+// denies bind(2), so httptest.NewServer cannot stand in for the real endpoint.
+var newHTTPClient = httpClient
+
 func doJSON(ctx context.Context, method, endpoint, token string, skipTLS bool) (*TokenInfo, error) {
-	return doJSONWithClient(ctx, method, endpoint, token, httpClient(skipTLS))
+	return doJSONWithClient(ctx, method, endpoint, token, newHTTPClient(skipTLS))
 }
 
 // doJSONWithClient takes an *http.Client directly so tests can inject a fake

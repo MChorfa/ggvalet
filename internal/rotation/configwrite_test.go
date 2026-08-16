@@ -1,6 +1,8 @@
 package rotation
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +21,52 @@ hosts:
         token: ***
         user: someone
 `
+
+func TestFileDigest_ComputesCorrectSHA256(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "test.txt")
+	content := []byte("hello world")
+	if err := os.WriteFile(p, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute expected digest in the test, not hardcoded
+	expected := sha256.Sum256(content)
+	expectedHex := hex.EncodeToString(expected[:])
+
+	got, err := FileDigest(p)
+	if err != nil {
+		t.Fatalf("FileDigest: %v", err)
+	}
+	if got != expectedHex {
+		t.Errorf("digest mismatch: got %q want %q", got, expectedHex)
+	}
+}
+
+func TestFileDigest_ChangesWhenFileModified(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "test.txt")
+	if err := os.WriteFile(p, []byte("version1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	digest1, err := FileDigest(p)
+	if err != nil {
+		t.Fatalf("FileDigest first: %v", err)
+	}
+
+	// Modify the file
+	if err := os.WriteFile(p, []byte("version2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	digest2, err := FileDigest(p)
+	if err != nil {
+		t.Fatalf("FileDigest second: %v", err)
+	}
+
+	if digest1 == digest2 {
+		t.Error("digest did not change after file modification")
+	}
+}
 
 func TestSetHostToken_PreservesEverythingElse(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.yml")

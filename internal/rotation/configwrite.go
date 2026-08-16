@@ -87,5 +87,19 @@ func SetHostToken(path, host, token string) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpName, path)
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	// fsync the directory so the new entry itself survives a crash.
+	// The token has already been rotated upstream by the time this runs,
+	// so an unsynced write is a lost credential.
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	if err := d.Sync(); err != nil {
+		return err
+	}
+	return nil
 }

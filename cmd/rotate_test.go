@@ -401,6 +401,37 @@ func TestRotateHosts_RotatedButNotCommittedIsLoudAndJournalled(t *testing.T) {
 	f.assertNoSecret(t)
 }
 
+// res.Rotated is set before the escrow write, so a failure of that write also
+// reaches the CRITICAL block. The state machine hedges its own message for that
+// phase ("may still be on disk"); the loudest line must not flatly contradict it
+// two lines above the cause that carries the truth.
+func TestPrintCritical_DoesNotAssertAnEscrowThatMayNotExist(t *testing.T) {
+	f := newRotateFixture(t)
+	f.runner.printCritical(
+		&rotation.Result{Host: testHost, Phase: rotation.PhaseEscrow, Rotated: true, NewTokenID: 51630},
+		errors.New("could not confirm the escrow write"))
+
+	printed := f.errOut.String()
+	if strings.Contains(printed, "is in escrow") {
+		t.Fatalf("the escrow write is what failed; it must not be asserted:\n%s", printed)
+	}
+	for _, want := range []string{"may be in escrow", f.escrow, "before treating this host as lost"} {
+		if !strings.Contains(printed, want) {
+			t.Errorf("missing %q:\n%s", want, printed)
+		}
+	}
+
+	// A later phase did write the escrow, and saying so plainly is what makes
+	// the hedge above meaningful.
+	f.errOut.Reset()
+	f.runner.printCritical(
+		&rotation.Result{Host: testHost, Phase: rotation.PhaseCommit, Rotated: true, NewTokenID: 51630},
+		errors.New("boom"))
+	if !strings.Contains(f.errOut.String(), "is in escrow") {
+		t.Fatalf("a post-escrow failure should state the escrow exists:\n%s", f.errOut.String())
+	}
+}
+
 // ─── --check ─────────────────────────────────────────────────────────────────
 
 func TestCheckHosts_DueHostIsReportedAndExitsNonZero(t *testing.T) {

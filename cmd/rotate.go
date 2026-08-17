@@ -214,7 +214,7 @@ func (rr *rotateRunner) rotateHosts(ctx context.Context, force bool) error {
 	// Reprint the half-finished rotations last: they are the one outcome that
 	// must not scroll past inside a multi-host run.
 	if len(criticals) > 0 {
-		fmt.Fprintf(rr.errOut, "\n%s %d host(s) hold an uncommitted credential in escrow:\n",
+		fmt.Fprintf(rr.errOut, "\n%s %d host(s) were rotated but not committed:\n",
 			colorErr("CRITICAL"), len(criticals))
 		for _, res := range criticals {
 			fmt.Fprintf(rr.errOut, "    %s (new token id %d, stopped at %s)\n", res.Host, res.NewTokenID, res.Phase)
@@ -228,13 +228,23 @@ func (rr *rotateRunner) rotateHosts(ctx context.Context, force bool) error {
 }
 
 // printCritical reports the outcome that costs a credential if it is ignored:
-// the old token is already revoked at the host and the replacement exists only
-// in escrow.
+// the old token is already revoked at the host and the replacement is not in
+// the config.
+//
+// res.Rotated is set before the escrow write, so PhaseEscrow arrives here too —
+// and for that phase the escrow may or may not exist, which is exactly why the
+// state machine hedges its own message. Asserting the escrow there would talk
+// an operator out of the directory listing that resolves it.
 func (rr *rotateRunner) printCritical(res *rotation.Result, err error) {
 	fmt.Fprintf(rr.errOut, "%s %s was rotated but not committed (stopped at %s)\n",
 		colorErr("✗ CRITICAL:"), res.Host, res.Phase)
-	fmt.Fprintf(rr.errOut, "    the old token is already revoked; the replacement (token id %d) is in escrow\n", res.NewTokenID)
-	fmt.Fprintf(rr.errOut, "    escrow: %s\n", rr.escrowDir)
+	if res.Phase == rotation.PhaseEscrow {
+		fmt.Fprintf(rr.errOut, "    the old token is already revoked; the replacement (token id %d) may be in escrow\n", res.NewTokenID)
+		fmt.Fprintf(rr.errOut, "    look for %s/%s-*.json before treating this host as lost\n", rr.escrowDir, res.Host)
+	} else {
+		fmt.Fprintf(rr.errOut, "    the old token is already revoked; the replacement (token id %d) is in escrow\n", res.NewTokenID)
+		fmt.Fprintf(rr.errOut, "    escrow: %s\n", rr.escrowDir)
+	}
 	fmt.Fprintf(rr.errOut, "    run: ggvalet rotate --recover\n")
 	fmt.Fprintf(rr.errOut, "    cause: %v\n", err)
 }

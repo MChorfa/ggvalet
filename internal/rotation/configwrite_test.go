@@ -22,6 +22,65 @@ hosts:
         user: someone
 `
 
+// glab writes nested sub-maps under a host, and those sub-maps carry their own
+// `token:` field. The host's own token sits at the host's field level; a nested
+// one sits deeper. Here the nested one comes first in file order, which is what
+// a depth-only walker gets wrong.
+const nestedHostFixture = `hosts:
+    gitlab.example.com:
+        api_protocol: https
+        container_registry:
+            host: registry.example.com
+            token: REGISTRY_TOKEN
+        token: HOST_TOKEN
+        user: someone
+`
+
+func TestSetHostToken_DoesNotWriteIntoANestedSubMap(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.yml")
+	if err := os.WriteFile(p, []byte(nestedHostFixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetHostToken(p, "gitlab.example.com", "NEW_HOST_TOKEN"); err != nil {
+		t.Fatalf("SetHostToken: %v", err)
+	}
+	got, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(got)
+
+	// Line-exact: a substring check would be satisfied by the nested line,
+	// whose deeper indentation still ends in the shallower one.
+	if !strings.Contains(out, "\n        token: NEW_HOST_TOKEN\n") {
+		t.Errorf("the host's own token line was not updated:\n%s", out)
+	}
+	if !strings.Contains(out, "\n            token: REGISTRY_TOKEN\n") {
+		t.Errorf("a nested credential must not be overwritten:\n%s", out)
+	}
+}
+
+func TestConfigHasToken_IgnoresANestedSubMapToken(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.yml")
+	if err := os.WriteFile(p, []byte(nestedHostFixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nested, err := configHasToken(p, "gitlab.example.com", "REGISTRY_TOKEN")
+	if err != nil {
+		t.Fatalf("configHasToken: %v", err)
+	}
+	if nested {
+		t.Error("a nested sub-map token must not count as the host's own token")
+	}
+	own, err := configHasToken(p, "gitlab.example.com", "HOST_TOKEN")
+	if err != nil {
+		t.Fatalf("configHasToken: %v", err)
+	}
+	if !own {
+		t.Error("the host's own token was not found")
+	}
+}
+
 func TestFileDigest_ComputesCorrectSHA256(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "test.txt")
 	content := []byte("hello world")

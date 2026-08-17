@@ -30,6 +30,13 @@ func FileDigest(path string) (string, error) {
 func findHostToken(lines []string, host string) (idx, indent int, value string) {
 	inHosts, inTarget := false, false
 	hostIndent := -1
+	// fieldIndent is the indentation of the host block's own fields, learned
+	// from the first line inside the block. Matching merely "deeper than the
+	// host key" would also match a `token:` nested in a sub-map — glab writes
+	// such sub-maps, and they carry their own token field, so a depth-only
+	// walker rewrites a nested credential and leaves the host's revoked one in
+	// place. -1 means the current block's field level is not yet known.
+	fieldIndent := -1
 
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -41,6 +48,7 @@ func findHostToken(lines []string, host string) (idx, indent int, value string) 
 		if lineIndent == 0 {
 			inHosts = trimmed == "hosts:"
 			inTarget = false
+			fieldIndent = -1
 			continue
 		}
 		if !inHosts {
@@ -51,10 +59,17 @@ func findHostToken(lines []string, host string) (idx, indent int, value string) 
 			if strings.HasSuffix(trimmed, ":") && !strings.Contains(trimmed, ": ") {
 				hostIndent = lineIndent
 				inTarget = strings.TrimSuffix(trimmed, ":") == host
+				fieldIndent = -1
 				continue
 			}
 		}
-		if inTarget && lineIndent > hostIndent && strings.HasPrefix(trimmed, "token:") {
+		if !inTarget || lineIndent <= hostIndent {
+			continue
+		}
+		if fieldIndent == -1 {
+			fieldIndent = lineIndent
+		}
+		if lineIndent == fieldIndent && strings.HasPrefix(trimmed, "token:") {
 			return i, lineIndent, strings.TrimSpace(strings.TrimPrefix(trimmed, "token:"))
 		}
 	}

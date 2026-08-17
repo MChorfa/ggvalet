@@ -96,13 +96,17 @@ func TestRedactSecrets_PassesNilAndEmptySecretsThrough(t *testing.T) {
 // leakyAPI puts whatever token it is handed straight into its error, which is
 // the failure mode this wiring exists to contain: the state machine wraps this
 // error and the wrap reaches stderr.
+//
+// It also names the *configured* token unconditionally. Echoing only the token
+// it was handed would leave the second redaction argument on VerifyToken
+// untested — it could be deleted with every test still green.
 func leakyAPI() rotateAPI {
 	return rotateAPI{
 		getSelf: func(_ context.Context, baseURL, token string, _ bool) (*rotation.TokenInfo, error) {
-			return nil, fmt.Errorf("GET %s: rejected token %s", baseURL, token)
+			return nil, fmt.Errorf("GET %s: rejected token %s (configured %s)", baseURL, token, testOldToken)
 		},
 		rotate: func(_ context.Context, baseURL, token, _ string, _ bool) (*rotation.TokenInfo, string, error) {
-			return nil, "", fmt.Errorf("POST %s: rejected token %s", baseURL, token)
+			return nil, "", fmt.Errorf("POST %s: rejected token %s (configured %s)", baseURL, token, testOldToken)
 		},
 	}
 }

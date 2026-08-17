@@ -76,6 +76,13 @@ func findHostToken(lines []string, host string) (idx, indent int, value string) 
 	return -1, 0, ""
 }
 
+// commitTempPrefix marks the throwaway config copy SetHostToken writes before
+// renaming it into place. That copy holds every host's token in plaintext, so
+// a crash between creation and rename leaves a second credential file behind;
+// sweepStaleTemps clears it on the next run. Shared with the sweeper so the
+// two cannot diverge.
+const commitTempPrefix = ".config.yml.tmp-"
+
 // SetHostToken rewrites exactly one line: the `token:` field inside host's
 // block.
 func SetHostToken(path, host, token string) error {
@@ -92,7 +99,7 @@ func SetHostToken(path, host, token string) error {
 	lines[idx] = fmt.Sprintf("%stoken: %s", strings.Repeat(" ", indent), token)
 
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".config.yml.tmp-*")
+	tmp, err := os.CreateTemp(dir, commitTempPrefix+"*")
 	if err != nil {
 		return err
 	}

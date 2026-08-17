@@ -96,11 +96,11 @@ func (r *Rotator) Rotate(ctx context.Context, host string, opt Options) (*Result
 	res := &Result{Host: host, Phase: PhasePreflight}
 
 	// ── Phase 0: preflight. Mutates nothing but its own leftovers. ────────
-	// A probe copy carries every host's live token; the defer that removes it
-	// does not run on a SIGKILL, and nothing else in the tool would ever clean
-	// one up.
-	for _, name := range sweepStaleProbes(filepath.Dir(opt.ConfigPath)) {
-		r.warn("removed a stale preflight copy of the credential file: %s", name)
+	// Probe copies and commit temp files both carry every host's live token;
+	// the defers that remove them do not run on a SIGKILL, and nothing else in
+	// the tool would ever clean one up.
+	for _, name := range sweepStaleTemps(filepath.Dir(opt.ConfigPath)) {
+		r.warn("removed a stale copy of the credential file: %s", name)
 	}
 
 	existing, skipped, err := ListEscrows(opt.EscrowDir)
@@ -335,17 +335,21 @@ func configHasToken(path, host, token string) (bool, error) {
 // probePrefix marks the throwaway config copies made by probeConfigWritable.
 const probePrefix = ".ggvalet-preflight-"
 
-// sweepStaleProbes deletes leftover probe copies in dir and returns the names
-// it removed. Deleting a probe that a concurrent run is still using is safe:
-// that run's preflight fails, which is the harmless direction.
-func sweepStaleProbes(dir string) []string {
+// sweepStaleTemps deletes leftover probe copies and leftover commit temp files
+// in dir, returning the names it removed. Both kinds hold a plaintext copy of
+// every host's token, and both are cleaned by a defer that a crash does not
+// run — which is precisely the scenario this package is built around, so the
+// next run sweeps them. Deleting a file a concurrent run is still using is
+// safe: that run fails in preflight or in commit, before the escrow is
+// retired, which is the harmless direction.
+func sweepStaleTemps(dir string) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
 	var swept []string
 	for _, en := range entries {
-		if en.IsDir() || !strings.HasPrefix(en.Name(), probePrefix) {
+		if en.IsDir() || !(strings.HasPrefix(en.Name(), probePrefix) || strings.HasPrefix(en.Name(), commitTempPrefix)) {
 			continue
 		}
 		if err := os.Remove(filepath.Join(dir, en.Name())); err == nil {

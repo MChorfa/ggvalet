@@ -287,6 +287,37 @@ func TestRotate_PreflightSweepsStaleProbeCopies(t *testing.T) {
 	}
 }
 
+// SetHostToken writes the whole config, new secret included, to a temp file
+// before renaming it into place. Its defer does not run on a SIGKILL — the
+// scenario this package exists for — so a killed commit leaves a second
+// plaintext copy of every token behind. The probe copy was already swept; this
+// one was not, and nothing else in the tool would ever remove it.
+func TestRotate_PreflightSweepsStaleCommitTemps(t *testing.T) {
+	r, log, cfgPath, escrowDir := newTestRotator(t, "")
+	cfgDir := filepath.Dir(cfgPath)
+	stale := filepath.Join(cfgDir, ".config.yml.tmp-123456")
+	if err := os.WriteFile(stale, []byte("hosts:\n    h:\n        token: leftover\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unrelated := filepath.Join(cfgDir, "config.yml.bak")
+	if err := os.WriteFile(unrelated, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := r.Rotate(context.Background(), testHost, testOptions(escrowDir, cfgPath)); err != nil {
+		t.Fatalf("Rotate: %v", err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale commit temp not swept: %v", err)
+	}
+	if _, err := os.Stat(unrelated); err != nil {
+		t.Errorf("the sweep must not become a general cleaner: %v", err)
+	}
+	if len(log.warnings) == 0 {
+		t.Error("sweeping a leftover copy of the credential file must be surfaced")
+	}
+}
+
 // An uncommitted escrow means a previous run died mid-rotation. Rotating again
 // would revoke the token the operator has not yet recovered.
 func TestRotate_ExistingEscrowBlocksSecondRotation(t *testing.T) {

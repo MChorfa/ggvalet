@@ -179,10 +179,34 @@ func (rr *rotateRunner) patHosts() []string {
 	return out
 }
 
+// sshOnlyHosts returns hosts that declare ssh but not pat, sorted. patHosts
+// silently skips them; this makes that skip visible.
+func (rr *rotateRunner) sshOnlyHosts() []string {
+	var out []string
+	for host := range rr.rc.Hosts {
+		if rr.rc.Uses(host, "ssh") && !rr.rc.Uses(host, "pat") {
+			out = append(out, host)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// noteSSHOnlyHosts prints a line for every host patHosts() will skip because
+// it declares ssh but not pat. Without it, an operator who configured such a
+// host and runs `ggvalet rotate` sees nothing at all for it, and cannot tell
+// "audited, nothing to do" from "your config was ignored".
+func (rr *rotateRunner) noteSSHOnlyHosts() {
+	for _, host := range rr.sshOnlyHosts() {
+		fmt.Fprintf(rr.out, "%s\n", colorDim("· "+host+" — no PAT declared; see `ggvalet ssh audit`"))
+	}
+}
+
 func (rr *rotateRunner) rotateHosts(ctx context.Context, force bool) error {
 	var problems int
 	var criticals []*rotation.Result
 
+	rr.noteSSHOnlyHosts()
 	for _, host := range rr.patHosts() {
 		res, err := rr.rot.Rotate(ctx, host, rotation.Options{
 			Force:       force,
@@ -291,6 +315,7 @@ func (rr *rotateRunner) checkHosts(force bool) error {
 		problems++
 	}
 
+	rr.noteSSHOnlyHosts()
 	for _, host := range rr.patHosts() {
 		due, reason := rr.due(host, force)
 		mark := colorDim("·")

@@ -621,3 +621,47 @@ func TestRotateRunner_OnlyHostsDeclaringPAT(t *testing.T) {
 		t.Fatalf("patHosts() = %v, want just the pat host", got)
 	}
 }
+
+// An ssh-only host is correctly out of scope for `ggvalet rotate` — but
+// patHosts() used to drop it with no message at all, leaving an operator who
+// configured the host unable to tell "audited, nothing to do" from "your
+// config was ignored". Both `rotate` and `rotate --check` must say something.
+func TestRotateHosts_SSHOnlyHostIsNotedNotSilentlyDropped(t *testing.T) {
+	f := newRotateFixture(t)
+	f.runner.rc.Hosts["ssh-only.example.com"] = rotation.Profile{Credentials: []string{"ssh"}}
+
+	if err := f.runner.rotateHosts(context.Background(), false); err != nil {
+		t.Fatalf("rotateHosts: %v", err)
+	}
+	if !strings.Contains(f.out.String(), "ssh-only.example.com") {
+		t.Fatalf("the ssh-only host must be mentioned, not silently dropped:\n%s", f.out.String())
+	}
+	if !strings.Contains(f.out.String(), "ggvalet ssh audit") {
+		t.Fatalf("the note should point at the command that covers ssh hosts:\n%s", f.out.String())
+	}
+}
+
+func TestCheckHosts_SSHOnlyHostIsNotedNotSilentlyDropped(t *testing.T) {
+	f := newRotateFixture(t)
+	f.runner.rc.Hosts["ssh-only.example.com"] = rotation.Profile{Credentials: []string{"ssh"}}
+	f.runner.lastRotated = func(string) (time.Time, bool, error) {
+		return time.Date(2026, 8, 14, 9, 0, 0, 0, time.UTC), true, nil
+	}
+
+	if err := f.runner.checkHosts(false); err != nil {
+		t.Fatalf("checkHosts: %v", err)
+	}
+	if !strings.Contains(f.out.String(), "ssh-only.example.com") {
+		t.Fatalf("the ssh-only host must be mentioned, not silently dropped:\n%s", f.out.String())
+	}
+}
+
+func TestRotateRunner_SSHOnlyHosts(t *testing.T) {
+	f := newRotateFixture(t)
+	f.runner.rc.Hosts["ssh-only.example.com"] = rotation.Profile{Credentials: []string{"ssh"}}
+	f.runner.rc.Hosts["both.example.com"] = rotation.Profile{Credentials: []string{"pat", "ssh"}}
+	got := f.runner.sshOnlyHosts()
+	if len(got) != 1 || got[0] != "ssh-only.example.com" {
+		t.Fatalf("sshOnlyHosts() = %v, want just the ssh-only host", got)
+	}
+}

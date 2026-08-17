@@ -438,11 +438,17 @@ func loadGlabHosts() (map[string]*HostConfig, string, error) {
 	return merged, defaultHost, nil
 }
 
-// GlabConfigPath returns the config.yml that Load reads hosts from: the first
-// candidate that exists, or the highest-priority candidate when none do.
+// GlabConfigPath returns the highest-priority glab config.yml that exists, or
+// the highest-priority candidate when none do, resolved through the same search
+// order Load uses. Callers that rewrite a token in place (rotation) need that
+// order rather than a second guess at it.
 //
-// Callers that rewrite a token in place (rotation) need the same file Load
-// read, resolved by the same search order, rather than a second guess at it.
+// It is not necessarily the file a given host's token came from: loadGlabHosts
+// *merges* hosts across every candidate (and the legacy hosts.yml), so with two
+// config.yml files a host declared only in the lower-priority one resolves to a
+// path that does not contain it. That case fails safely — rotation preflight
+// proves the host's token line is rewritable in this file before any remote
+// call — but it is a first hit, not a guarantee.
 func GlabConfigPath() string {
 	paths := glabConfigPaths()
 	for _, p := range paths {

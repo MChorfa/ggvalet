@@ -17,9 +17,9 @@ var ErrUnsupported = errors.New("provider: operation not supported")
 type Kind string
 
 const (
-	KindGitLab  Kind = "gitlab"
-	KindGitHub  Kind = "github"
-	KindGitea   Kind = "gitea"
+	KindGitLab Kind = "gitlab"
+	KindGitHub Kind = "github"
+	KindGitea  Kind = "gitea"
 )
 
 // User is a host-neutral identity reference.
@@ -289,34 +289,34 @@ type ListUsersOptions struct {
 // is the count of open issues (not MRs/PRs); it is 0 on hosts that don't
 // expose a precomputed counter.
 type Project struct {
-	ID             int
-	Name           string
-	Path           string // full path with namespace, e.g. "group/proj"
-	FullName       string // display name, e.g. "Group / Proj"
-	Description    string
-	WebURL         string
-	DefaultBranch  string
+	ID              int
+	Name            string
+	Path            string // full path with namespace, e.g. "group/proj"
+	FullName        string // display name, e.g. "Group / Proj"
+	Description     string
+	WebURL          string
+	DefaultBranch   string
 	OpenIssuesCount int
-	Archived       bool
+	Archived        bool
 }
 
 // WorkItem is a host-neutral work item (GitLab-native; GitHub/Gitea return
 // ErrUnsupported). On GitLab it maps to the /projects/:id/work_items REST
 // surface (tasks, objectives, key results, issues).
 type WorkItem struct {
-	ID      int
-	IID     int
-	Title   string
-	State   string
-	Type    string // TASK|OBJECTIVE|KEY_RESULT|ISSUE
-	WebURL  string
+	ID     int
+	IID    int
+	Title  string
+	State  string
+	Type   string // TASK|OBJECTIVE|KEY_RESULT|ISSUE
+	WebURL string
 }
 
 // ListWorkItemsOptions filters a work item list query.
 type ListWorkItemsOptions struct {
-	State string // opened|closed|all
-	Type  string // TASK|OBJECTIVE|KEY_RESULT|ISSUE (empty = all)
-	Page  int
+	State   string // opened|closed|all
+	Type    string // TASK|OBJECTIVE|KEY_RESULT|ISSUE (empty = all)
+	Page    int
 	PerPage int
 }
 

@@ -43,7 +43,7 @@ func standupCmd() *cobra.Command {
 			sinceTime := time.Now().UTC().Add(-dur)
 
 			// ── Yesterday: journal entries ────────────────────────────────────
-			entries, err := glClient.Journal.Query(journal.Filter{
+			entries, err := glClient.QueryEntries(cmd.Context(), journal.Filter{
 				Since: sinceTime,
 				Ops:   []journal.Op{journal.OpCreate, journal.OpUpdate, journal.OpClose, journal.OpComment, journal.OpAssign},
 			})

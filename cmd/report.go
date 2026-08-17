@@ -33,7 +33,7 @@ func reportCmd() *cobra.Command {
 				return err
 			}
 
-			entries, err := glClient.Journal.Query(journal.Filter{Since: sinceTime, Until: untilTime})
+			entries, err := glClient.QueryEntries(cmd.Context(), journal.Filter{Since: sinceTime, Until: untilTime})
 			if err != nil {
 				return err
 			}
@@ -121,7 +121,7 @@ func reportPushCmd() *cobra.Command {
 				jFilter.Host = reportHost
 			}
 
-			entries, err := glClient.Journal.Query(jFilter)
+			entries, err := glClient.QueryEntries(cmd.Context(), jFilter)
 			if err != nil {
 				return err
 			}

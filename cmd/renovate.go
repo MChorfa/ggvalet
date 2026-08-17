@@ -418,7 +418,7 @@ func fetchRenovateMRs(project string, allProjects bool) ([]*provider.MergeReques
 	}
 
 	mrs, err := glClient.Provider.ListMergeRequests(ctx, project, provider.ListMergeRequestsOptions{
-		State:  "opened",
+		State:   "opened",
 		PerPage: 100,
 	})
 	if err != nil {

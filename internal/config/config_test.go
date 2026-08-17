@@ -1148,3 +1148,29 @@ func TestAPIURL_CaseInsensitiveProtocol(t *testing.T) {
 		})
 	}
 }
+
+// ─── GlabConfigPath() Tests ─────────────────────────────────────────────────
+
+func TestGlabConfigPath_PrefersTheExplicitOverride(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(p, []byte("host: example.com\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	t.Setenv("GLVALET_GLAB_CONFIG", p)
+	if got := GlabConfigPath(); got != p {
+		t.Fatalf("GlabConfigPath() = %q, want %q", got, p)
+	}
+}
+
+func TestGlabConfigPath_FallsBackToTheDefaultCandidate(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("GLVALET_GLAB_CONFIG", "")
+	got := GlabConfigPath()
+	// Nothing exists on disk, so the highest-priority candidate is returned
+	// rather than an empty string: the caller needs a path to name in an error.
+	if !strings.HasSuffix(got, filepath.Join("glab-cli", "config.yml")) {
+		t.Fatalf("GlabConfigPath() = %q, want a glab-cli/config.yml candidate", got)
+	}
+}

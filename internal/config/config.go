@@ -116,9 +116,9 @@ type Options struct {
 
 // Provider names used by GLVALET_PROVIDER and Config.Provider.
 const (
-	providerGitLab  = "gitlab"
-	providerGitHub  = "github"
-	providerGitea   = "gitea"
+	providerGitLab = "gitlab"
+	providerGitHub = "github"
+	providerGitea  = "gitea"
 )
 
 // providerFromEnv returns the trimmed, lower-cased GLVALET_PROVIDER value.
@@ -436,6 +436,30 @@ func loadGlabHosts() (map[string]*HostConfig, string, error) {
 		return nil, "", lastErr
 	}
 	return merged, defaultHost, nil
+}
+
+// GlabConfigPath returns the highest-priority glab config.yml that exists, or
+// the highest-priority candidate when none do, resolved through the same search
+// order Load uses. Callers that rewrite a token in place (rotation) need that
+// order rather than a second guess at it.
+//
+// It is not necessarily the file a given host's token came from: loadGlabHosts
+// *merges* hosts across every candidate (and the legacy hosts.yml), so with two
+// config.yml files a host declared only in the lower-priority one resolves to a
+// path that does not contain it. That case fails safely — rotation preflight
+// proves the host's token line is rewritable in this file before any remote
+// call — but it is a first hit, not a guarantee.
+func GlabConfigPath() string {
+	paths := glabConfigPaths()
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	return paths[0]
 }
 
 // glabConfigPaths returns candidate config.yml paths in priority order.

@@ -664,7 +664,7 @@ func (g *GitHub) ListMilestones(ctx context.Context, project string, opts provid
 		state = "all"
 	}
 	ghOpts := &gh.MilestoneListOptions{
-		State: state,
+		State:       state,
 		ListOptions: gh.ListOptions{Page: opts.Page, PerPage: opts.PerPage},
 	}
 	ms, _, err := g.client.Issues.ListMilestones(ctx, owner, repo, ghOpts)
@@ -1083,7 +1083,7 @@ func ghMilestone(m *gh.Milestone) provider.Milestone {
 // that receive a neutral title must resolve it first.
 func (g *GitHub) milestoneNumberByTitle(ctx context.Context, owner, repo, title string) (int, error) {
 	milestones, _, err := g.client.Issues.ListMilestones(ctx, owner, repo, &gh.MilestoneListOptions{
-		State: "all",
+		State:       "all",
 		ListOptions: gh.ListOptions{PerPage: 100},
 	})
 	if err != nil {

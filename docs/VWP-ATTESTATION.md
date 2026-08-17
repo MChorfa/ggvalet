@@ -1,9 +1,10 @@
 # VWP Self-Attestation — ggvalet (`ggvalet`)
 
-- **Generated:** 2026-07-15 (supersedes the 2026-06-02 P0–P18 attestation)
+- **Generated:** 2026-07-26 (supersedes the 2026-07-15 P0–P19 attestation)
 - **Source spec:** CKODEX VWP v0.1 §26.E (`CLAUDE.md`)
-- **Scope:** Phases P0–P19 of the ggvalet implementation, including the
-  GitLab-first work reconciler and durable receipt substrate.
+- **Scope:** Phases P0–P20 of the ggvalet implementation, including the
+  GitLab-first work reconciler, durable receipt substrate, and Wave 2 coverage
+  and documentation hardening.
 - **Self-signing:** unsigned in-repo; `make attest-sign` cosign-signs this file
   (keyless in CI via `SIGSTORE_ID_TOKEN`). Signing executes at the GA tag, alongside
   the release artifacts (DEF-02, P17).
@@ -42,10 +43,12 @@
 | P17 | Release pipeline: `make checksums`/`sbom`/`release` targets + tag-driven CI `release` stage (cosign keyless via GitLab OIDC). Local assembly verified (5 cross binaries + verified SHA256SUMS + valid CycloneDX SBOM, 220 components); cosign sign/verify runs on first tag | C (assembly) / S (signing) |
 | P18 | GA cutover: `ggvalet --version` wired (`main.version` ldflag now has a symbol; Cobra `--version`/`-v`); README host-capability matrix + cosign-verify docs + stale "not routed" claim corrected; `journal_test.go` root-skip removed (de-skipped via ENOTDIR, runs everywhere); `docs/milestone-ga.md` + `make attest-sign` | C |
 | P19 | SQLite intent/outcome receipts, one-time JSONL import/export, plan-v2 dependency graph, GitLab epic linkage, and stop-and-resume reconciliation | C |
+| P20 | Per-package coverage gates, SQLite-backed journal/report/standup/tui queries, generated command reference, Dependabot, and security policy | C |
 | DEF-01 | `client.New` flag/env routing to the selected provider | **C (done in P8)** |
 | DEF-02 | Signed release artifacts (cosign + SBOM) | **pipeline C / signature S (P17)** |
 | DEF-03 | BPL (back-propagation lineage) for promotion-critical artifacts | A |
-| RES-01 | Command-layer provider migration **complete** for host-neutral surfaces — 42 raw `.GL.` sites remain across 10 GitLab-only `cmd/` files; GitHub host is therefore `[S]` experimental | S |
+| RES-01 | Command-layer provider migration **complete** for host-neutral surfaces — 42 raw `.GL.` sites remain across 10 GitLab-only `cmd/` files; GitHub live CI integration job added, but GitHub path stays `[S]` until `github-live` passes with a real token | S |
+|| P21 | GitHub live-instance CI integration job: `github-live` job and `TestProviderGitHubLive` wired, ready for token-driven promotion to `[C]` | S |
 
 ---
 
@@ -296,8 +299,10 @@ deferred:         ["full command-layer provider migration (RES-01)", "DEF-02 cos
   Under `GLVALET_PROVIDER=github` these **fail loud** via the P12 host guard
   (`cmd/hostguard.go`); on GitHub, host-neutral commands that lack a GitHub analogue
   (`mr mine`/`mr approve`, `issue list --milestone`) dispatch through `Provider` and return
-  `ErrUnsupported`. **GitHub remains `[S]` experimental** until a live-instance integration
-  job runs in CI (currently flag-guarded, token-required).
+  `ErrUnsupported`. **GitHub remains `[S]` experimental**: a live-instance integration
+  job (`github-live` in `.gitlab-ci.yml` plus `internal/provider/github/github_live_test.go`)
+  has been added, but the path stays `[S]` until that job passes against `api.github.com`
+  with a real token.
 
 ---
 
@@ -316,9 +321,60 @@ stubs_remaining:  4
 deferred:         ["GitHub reconciliation", "automatic rollback", "autonomous convergence"]
 ```
 
+```yaml
+capability_id:    p20-wave2-coverage-and-docs
+claim:            Per-package coverage floors enforced by scripts/coverage-check.sh and .coverage-floors; journal/report/standup/tui commands query a SQLite journal_entries projection with JSONL backfill and fallback; make docs generates pages/docs/commands.md and the static site; Dependabot and docs/SECURITY.md added.
+classification:   C
+evidence_refs:
+  - kind:  test_output
+    hash:  686293686ce63deef9ce52c082f9a5fa5181e549531a0485d2776300f352a63a
+    path:  docs/evidence/p20-wave2-coverage.txt
+  - kind:  test_output
+    hash:  8bccc87dd952455d75459289e9ceef2b93b0fb13e36cb56970834bcbd326bec9
+    path:  docs/evidence/p20-wave2-p19-coverage.txt
+  - kind:  artifact
+    hash:  ~
+    path:  scripts/coverage-check.sh
+  - kind:  artifact
+    hash:  ~
+    path:  .coverage-floors
+  - kind:  artifact
+    hash:  ~
+    path:  internal/state/entries.go
+  - kind:  artifact
+    hash:  ~
+    path:  internal/client/client.go
+  - kind:  artifact
+    hash:  ~
+    path:  scripts/generate-commands-md.sh
+  - kind:  artifact
+    hash:  ~
+    path:  docs/SECURITY.md
+  - kind:  artifact
+    hash:  ~
+    path:  .github/dependabot.yml
+stubs_remaining:  0
+deferred:         []
+```
+
+```yaml
+capability_id:    p21-github-live-ci
+claim:            A live-instance GitHub integration test and CI job are wired. The `github-live` job in `.gitlab-ci.yml` runs `go test ./internal/provider/github -run TestProviderGitHubLive` when `GLVALET_GITHUB_TOKEN` is set, exercising `ListMyIssues` and, if `GLVALET_GITHUB_TEST_PROJECT` is set, `ListLabels` and `ListIssues` against `api.github.com`.
+classification:   S
+evidence_refs:
+  - kind:  artifact
+    hash:  ~
+    path:  .gitlab-ci.yml
+  - kind:  artifact
+    hash:  ~
+    path:  internal/provider/github/github_live_test.go
+stubs_remaining:  1
+deferred:         ["passing live GitHub token run"]
+```
+
 ## Stubs remaining
 
-Count: **4** (was incorrectly reported as 0 on 2026-05-28; 9 at P11). All are surfaced
+Count: **4** intentional `ErrUnsupported` limits plus **1** deferred live-instance run (P21), for a total of **5** (was incorrectly reported as 0 on 2026-05-28; 9 at P11). All are surfaced
 here per P-VW-004. None are silent. **Zero remain in the command-migration class** — all
 cleared P13–P16.
 

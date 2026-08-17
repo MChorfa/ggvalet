@@ -26,15 +26,23 @@ test:
   script:
     - go test ./... -coverprofile=cover.out -covermode=atomic
     - go tool cover -func=cover.out | tee coverage.txt
-    - |
-      total=$(awk '/^total:/ {gsub("%","",$3); print $3}' coverage.txt)
-      echo "total coverage: ${total}% (gate: ${MIN_COVERAGE}%)"
-      awk -v t="$total" -v g="$MIN_COVERAGE" 'BEGIN { exit !(t+0 >= g+0) }' \
-        || { echo "FAIL: coverage ${total}% < ${MIN_COVERAGE}% gate"; exit 1; }
+    - bash scripts/coverage-check.sh coverage.txt .coverage-floors
   coverage: '/total:\s+\(statements\)\s+\d+\.\d+%/'
   artifacts:
     paths: [cover.out, coverage.txt]
     expire_in: 30 days
+
+# ── verify: generated docs and build-site script lint (P-VW-004) ───────────
+docs:
+  stage: verify
+  image: $GO_IMAGE
+  script:
+    - go build -o ggvalet .
+    - bash -n scripts/build-site.sh
+    - GGVALET_BIN=./ggvalet bash scripts/generate-commands-md.sh
+  artifacts:
+    paths: [pages/docs/commands.md]
+    expire_in: 1 week
 
 # ── test: dependency resolution + tidy drift (P-VW-008) ────────────────────
 deps:
@@ -46,6 +54,24 @@ deps:
     - cp go.mod go.mod.orig && cp go.sum go.sum.orig
     - go mod tidy
     - 'diff go.mod go.mod.orig && diff go.sum go.sum.orig || { echo "FAIL: go.mod/go.sum not tidy - run go mod tidy"; exit 1; }'
+
+# ── test: live GitHub integration (gates [S] → [C]) ─────────────────────────
+# Only runs when GLVALET_GITHUB_TOKEN is defined. Exercises the real go-github
+# SDK against api.github.com and proves the GitHub provider is GA-ready.
+github-live:
+  stage: test
+  image: $GO_IMAGE
+  needs: [deps]
+  rules:
+    - if: '$GLVALET_GITHUB_TOKEN'
+  variables:
+    GLVALET_PROVIDER: "github"
+    GLVALET_GITHUB_ENABLED: "true"
+    GLVALET_GITHUB_TOKEN: "$GLVALET_GITHUB_TOKEN"
+    GLVALET_GITHUB_URL: "https://api.github.com"
+    GLVALET_GITHUB_TEST_PROJECT: "$GLVALET_GITHUB_TEST_PROJECT"
+  script:
+    - go test ./internal/provider/github -run TestProviderGitHubLive -v
 
 # ── security: vulnerabilities, secrets, SBOM ───────────────────────────────
 vuln:
@@ -121,6 +147,8 @@ pages:
   stage: release
   image: python:3.12-slim
   needs:
+    - job: docs
+      artifacts: true
     - job: release
       artifacts: true
       optional: true

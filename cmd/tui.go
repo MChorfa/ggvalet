@@ -299,7 +299,7 @@ func (m tuiModel) loadCmd(t tuiTab) tea.Cmd {
 			if m.host != "" {
 				f.Host = m.host
 			}
-			entries, err := glClient.Journal.Query(f)
+			entries, err := glClient.QueryEntries(context.Background(), f)
 			if err != nil {
 				return tuiErrMsg{t, fmt.Errorf("could not read journal: %w", err)}
 			}

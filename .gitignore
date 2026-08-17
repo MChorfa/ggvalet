@@ -20,6 +20,7 @@ vendor/
 
 # Local runtime data
 .ggvalet/
+.bin/
 
 # Editor
 .vscode/
@@ -31,6 +32,13 @@ vendor/
 dist/
 site/
 public/
+reports/
 sbom.cdx.json
 *.pem
 *.sig
+*.bundle
+ggvalet-attest.key
+ggvalet-attest.pub
+
+# git worktrees for isolated plan execution
+.worktrees/

@@ -2,11 +2,33 @@ package observed
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 
 	"github.com/MChorfa/ggvalet/internal/state"
 )
+
+// BaseTransport returns the shared outbound transport. It is the ONLY place in
+// this repository that may disable TLS verification, and it does so solely to
+// mirror glab's per-host skip_tls_verify setting — ggvalet must not be stricter
+// than the CLI whose config it reads, or it would fail on hosts glab can reach.
+// Any new caller uses this function; nobody writes InsecureSkipVerify again.
+//
+// It starts from a clone of http.DefaultTransport rather than a zero-value
+// *http.Transport, so callers keep ProxyFromEnvironment, connection pooling
+// (MaxIdleConns), and the handshake/expect-continue timeouts DefaultTransport
+// carries. A bare &http.Transport{} loses all of that silently.
+func BaseTransport(skipTLS bool) *http.Transport {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	if skipTLS {
+		if tr.TLSClientConfig == nil {
+			tr.TLSClientConfig = &tls.Config{}
+		}
+		tr.TLSClientConfig.InsecureSkipVerify = true //nolint:gosec // mirrors glab skip_tls_verify
+	}
+	return tr
+}
 
 type Transport struct {
 	Base     http.RoundTripper

@@ -3,4 +3,6 @@
 - [Releases](releases.md)
 - [Verify](verify.md)
 - [Providers](providers.md)
+- [Commands](commands.md)
 - [Project docs](project-docs/VWP-ATTESTATION.md)
+- [Security](project-docs/SECURITY.md)

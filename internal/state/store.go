@@ -102,6 +102,17 @@ CREATE TABLE IF NOT EXISTS receipt_events (
  FOREIGN KEY(operation_id) REFERENCES operations(id)
 );
 CREATE INDEX IF NOT EXISTS receipt_events_operation ON receipt_events(operation_id, occurred_at);
+CREATE TABLE IF NOT EXISTS journal_entries (
+ id TEXT PRIMARY KEY, host TEXT NOT NULL, op TEXT NOT NULL, entity TEXT NOT NULL,
+ project TEXT NOT NULL DEFAULT '', group_path TEXT NOT NULL DEFAULT '',
+ entity_id INTEGER NOT NULL DEFAULT 0, iid INTEGER NOT NULL DEFAULT 0,
+ title TEXT NOT NULL DEFAULT '', url TEXT NOT NULL DEFAULT '',
+ outcome TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]',
+ timestamp TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS journal_entries_time ON journal_entries(timestamp);
+CREATE INDEX IF NOT EXISTS journal_entries_host ON journal_entries(host);
+CREATE INDEX IF NOT EXISTS journal_entries_outcome ON journal_entries(outcome);
 CREATE TABLE IF NOT EXISTS plan_runs (
  id TEXT PRIMARY KEY, target_key TEXT NOT NULL, provider TEXT NOT NULL,
  plan_json TEXT NOT NULL, status TEXT NOT NULL, error TEXT NOT NULL DEFAULT '',
@@ -116,6 +127,9 @@ CREATE TABLE IF NOT EXISTS plan_steps (
  error TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL,
  PRIMARY KEY(run_id, step_id),
  FOREIGN KEY(run_id) REFERENCES plan_runs(id)
+);
+CREATE TABLE IF NOT EXISTS rotation_state (
+ host TEXT PRIMARY KEY, last_rotated_at TEXT NOT NULL
 );`
 	if _, err := s.db.Exec(schema); err != nil {
 		return fmt.Errorf("state migrate: %w", err)
@@ -379,4 +393,31 @@ func (s *Store) SetStep(ctx context.Context, runID, stepID, status string, remot
  WHERE run_id=? AND step_id=?`, status, remoteID, remoteIID, webURL, detail,
 		time.Now().UTC().Format(time.RFC3339Nano), runID, stepID)
 	return err
+}
+
+// SetLastRotated records a successful rotation for host.
+func (s *Store) SetLastRotated(ctx context.Context, host string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO rotation_state (host, last_rotated_at) VALUES (?, ?)
+		 ON CONFLICT(host) DO UPDATE SET last_rotated_at = excluded.last_rotated_at`,
+		host, at.UTC().Format(time.RFC3339))
+	return err
+}
+
+// LastRotated returns the last successful rotation for host. ok is false when
+// the host has never been rotated.
+func (s *Store) LastRotated(ctx context.Context, host string) (time.Time, bool, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, `SELECT last_rotated_at FROM rotation_state WHERE host = ?`, host).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return t, true, nil
 }

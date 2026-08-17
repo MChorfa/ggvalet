@@ -1,0 +1,17 @@
+. 100.0
+cmd 82.0
+internal/cache 93.0
+internal/client 96.0
+internal/config 88.0
+internal/journal 97.0
+internal/observed 88.0
+internal/parallel 100.0
+internal/plan 84.0
+internal/provider/gitea 82.0
+internal/provider/github 83.0
+internal/provider/gitlab 88.0
+internal/providerfactory 100.0
+internal/reconcile 75.0
+internal/report 95.0
+internal/rotation 76.0
+internal/state 84.0

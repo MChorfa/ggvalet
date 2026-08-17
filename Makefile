@@ -6,7 +6,7 @@ DIST := dist
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.0.0-dev")
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
 
-.PHONY: all build install test cover cover-p19 vwp govulncheck regression fmt vet clean tidy cross checksums sbom release release-dry release-publish goreleaser-check site attest-sign
+.PHONY: all build install test cover cover-p19 vwp govulncheck regression fmt vet clean tidy cross checksums sbom release release-dry release-publish goreleaser-check site docs site-lint commands-reference attest-sign
 
 all: tidy fmt vet build
 
@@ -21,14 +21,11 @@ install:
 test:
 	go test ./...
 
-# Full suite + coverage profile + 80% gate (mirrors the CI `test` job).
+# Full suite + coverage profile + per-package + 80% total gate (P-VW-005).
 cover:
 	go test ./... -coverprofile=cover.out -covermode=atomic
 	go tool cover -func=cover.out | tee coverage.txt
-	@total=$$(awk '/^total:/ {gsub("%","",$$3); print $$3}' coverage.txt); \
-	echo "total coverage: $$total% (gate: 80%)"; \
-	awk -v t="$$total" 'BEGIN { exit !(t+0 >= 80.0) }' \
-		|| { echo "FAIL: coverage $$total% < 80%"; exit 1; }
+	bash scripts/coverage-check.sh coverage.txt .coverage-floors
 
 # P19 trust/reconciliation slice. This does not replace the repository-wide
 # `cover` gate; it proves the newly introduced critical path independently.
@@ -97,13 +94,21 @@ release: clean cross checksums sbom
 	@ls -1 $(DIST)
 	@echo "Sign in CI: cosign sign-blob (keyless) → SHA256SUMS.sig + .pem"
 
-# Cosign-sign the VWP attestation. Keyless in CI (SIGSTORE_ID_TOKEN present);
-# locally pass a key, e.g. `cosign sign-blob --key cosign.key ...`.
+# Cosign-sign the VWP attestation and optional evidence bundle. Keyless in CI
+# (SIGSTORE_ID_TOKEN present); locally pass a key via COSIGN_KEY.
+COSIGN_KEY ?=
+EVIDENCE_BUNDLE ?=
 attest-sign:
-	cosign sign-blob --yes docs/VWP-ATTESTATION.md \
-		--output-signature docs/VWP-ATTESTATION.md.sig \
-		--output-certificate docs/VWP-ATTESTATION.md.pem
-	@echo "Signed docs/VWP-ATTESTATION.md → .sig + .pem"
+	cosign sign-blob --yes --use-signing-config=false \
+		--bundle docs/VWP-ATTESTATION.md.bundle \
+		$(if $(COSIGN_KEY),--key $(COSIGN_KEY)) docs/VWP-ATTESTATION.md
+	@echo "Signed docs/VWP-ATTESTATION.md → .bundle"
+	if [ -n "$(EVIDENCE_BUNDLE)" ]; then \
+		cosign sign-blob --yes --use-signing-config=false \
+			--bundle "$(EVIDENCE_BUNDLE).bundle" \
+			$(if $(COSIGN_KEY),--key $(COSIGN_KEY)) "$(EVIDENCE_BUNDLE)"; \
+		echo "Signed $(EVIDENCE_BUNDLE) → .bundle"; \
+	fi
 
 # Validate GoReleaser configuration. The GitLab variant requires a git repo
 # with a remote; it is validated by the release pipeline.
@@ -128,3 +133,14 @@ release-publish:
 # Build the static documentation site for local preview.
 site:
 	bash scripts/build-site.sh --output site
+
+# Generate the commands reference, build the site, and lint the build script.
+docs: build commands-reference site
+	bash -n scripts/build-site.sh
+
+commands-reference: build
+	GGVALET_BIN=./ggvalet bash scripts/generate-commands-md.sh
+
+# Lint the build-site script and prove the site can be generated.
+site-lint: site
+	bash -n scripts/build-site.sh

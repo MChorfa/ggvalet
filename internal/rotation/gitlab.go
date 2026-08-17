@@ -42,6 +42,10 @@ func httpClient(skipTLS bool) *http.Client {
 // newHTTPClient builds the client every exported API call uses. It is a
 // variable so tests can substitute an in-process RoundTripper: the sandbox
 // denies bind(2), so httptest.NewServer cannot stand in for the real endpoint.
+//
+// Because tests swap it and restore it in t.Cleanup, no test in this package
+// may call t.Parallel() — parallel tests would write this shared global
+// mid-flight and cross-wire each other's fakes.
 var newHTTPClient = httpClient
 
 func doJSON(ctx context.Context, method, endpoint, token string, skipTLS bool) (*TokenInfo, error) {

@@ -200,6 +200,15 @@ tail -n 50 ~/.local/log/ggvalet-rotate.log   # last run's output
 ggvalet doctor                           # remote token health, right now
 ```
 
+The log holds no secrets — token values never reach stdout or stderr — but it
+does accumulate host names, token IDs and escrow paths, and launchd creates it
+with your default umask rather than the 0600 the credential files use. If your
+umask is permissive, tighten it once:
+
+```bash
+chmod 600 ~/.local/log/ggvalet-rotate.log
+```
+
 If the schedule silently stopped running, `doctor` is what will catch it —
 tokens will show as approaching expiry (or already past the point where
 `self_rotate` cadence should have refreshed them) even though `rotate --check`

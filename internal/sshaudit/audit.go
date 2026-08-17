@@ -1,5 +1,11 @@
-// Package sshaudit reports drift between SSH key files, ssh_config references,
-// and keys registered on remote hosts. It never writes to ~/.ssh.
+// Package sshaudit reports drift between SSH key files and the ssh_config
+// references that point at them. It never writes to ~/.ssh.
+//
+// Scope: this is a local inventory. It does not list keys registered on a
+// remote host, and it does not fingerprint key material, so it cannot report
+// a local key absent from the remote or vice versa. Spec §9 describes both;
+// they are deferred past v1 rather than half-built, because a class that is
+// declared but never produced reads to a consumer as "checked, nothing found".
 package sshaudit
 
 import (
@@ -9,13 +15,13 @@ import (
 	"strings"
 )
 
+// The classes Audit can actually produce. ORPHAN_LOCAL, ORPHAN_REMOTE and
+// EXPIRING were declared here before anything emitted them; they are omitted
+// until the remote key listing that would produce them exists.
 const (
-	ClassMatched      = "MATCHED"
-	ClassDanglingRef  = "DANGLING_REF"
-	ClassCorruptName  = "CORRUPT_NAME"
-	ClassOrphanLocal  = "ORPHAN_LOCAL"
-	ClassOrphanRemote = "ORPHAN_REMOTE"
-	ClassExpiring     = "EXPIRING"
+	ClassMatched     = "MATCHED"
+	ClassDanglingRef = "DANGLING_REF"
+	ClassCorruptName = "CORRUPT_NAME"
 )
 
 // ConfigEntry is one Host block's IdentityFile reference, as found in an
@@ -28,13 +34,15 @@ type ConfigEntry struct {
 // Finding is one unit of drift (or confirmed match) the audit reports.
 // Managed marks whether ggvalet is responsible for the host the finding
 // concerns — only managed drift should fail a caller's exit code.
+// Fingerprint is deliberately absent: nothing here reads key material, so a
+// fingerprint field would be present in the --json contract and never
+// populated.
 type Finding struct {
-	Class       string `json:"class"`
-	Host        string `json:"host,omitempty"`
-	Path        string `json:"path,omitempty"`
-	Fingerprint string `json:"fingerprint,omitempty"`
-	Detail      string `json:"detail"`
-	Managed     bool   `json:"managed"`
+	Class   string `json:"class"`
+	Host    string `json:"host,omitempty"`
+	Path    string `json:"path,omitempty"`
+	Detail  string `json:"detail"`
+	Managed bool   `json:"managed"`
 }
 
 // ParseSSHConfig extracts Host blocks and their IdentityFile references from
@@ -46,8 +54,28 @@ func ParseSSHConfig(path string) ([]ConfigEntry, error) {
 	}
 	defer f.Close()
 
+	// A block is buffered rather than emitted line by line because HostName may
+	// appear after IdentityFile. The Host token is an alias — `Host gitlab-work`
+	// — while callers match findings against real GitLab hostnames from
+	// rotation.yaml. Reporting the alias marks every genuine finding unmanaged
+	// (so it cannot fail the exit code, which is the point of managed) while a
+	// missing-config finding is manufactured for the real hostname and does
+	// fail it: wrong in both directions at once. Resolve HostName when the
+	// block declares one, and fall back to the alias when it does not.
 	var out []ConfigEntry
-	current := ""
+	alias, hostName := "", ""
+	var identities []string
+	flush := func() {
+		name := hostName
+		if name == "" {
+			name = alias
+		}
+		for _, id := range identities {
+			out = append(out, ConfigEntry{Host: name, IdentityFile: id})
+		}
+		identities = nil
+	}
+
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
@@ -60,11 +88,15 @@ func ParseSSHConfig(path string) ([]ConfigEntry, error) {
 		}
 		switch strings.ToLower(fields[0]) {
 		case "host":
-			current = fields[1]
+			flush()
+			alias, hostName = fields[1], ""
+		case "hostname":
+			hostName = fields[1]
 		case "identityfile":
-			out = append(out, ConfigEntry{Host: current, IdentityFile: expandHome(fields[1])})
+			identities = append(identities, expandHome(fields[1]))
 		}
 	}
+	flush()
 	return out, sc.Err()
 }
 

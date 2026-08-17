@@ -208,6 +208,20 @@ hosts declaring `ssh`, so sc01-trt is never queried.
 
 v1 never writes to `~/.ssh`.
 
+**What v1 actually shipped (amended 2026-08-17, after the final branch review).**
+The implemented audit is a **local inventory**: it matches on the
+`IdentityFile` path, not on a SHA-256 fingerprint, and it does not list keys
+registered on a remote host. So it produces `MATCHED`, `DANGLING_REF` and
+`CORRUPT_NAME` only, where `MATCHED` means "the referenced file exists" rather
+than the three-way match described above. `ORPHAN_LOCAL`, `ORPHAN_REMOTE` and
+`EXPIRING` cannot arise without the remote listing and are **not** part of the
+v1 `--json` contract; the constants and the unpopulated `Fingerprint` field
+were removed rather than left declared, because a class a consumer can see but
+that is never produced reads as "checked, nothing found". Fingerprint matching
+and remote key listing are deferred to v1.1. The rest of this section — the
+managed/unmanaged labelling, the exit-code rule, never querying sc01-trt, and
+never writing to `~/.ssh` — is implemented as written.
+
 ## 10. `doctor` change
 
 `doctor` iterates every configured host, reports per-host, and exits non-zero if

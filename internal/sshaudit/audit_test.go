@@ -81,6 +81,40 @@ func TestParseSSHConfig_ExtractsHostBlocksAndExpandsHome(t *testing.T) {
 	}
 }
 
+// `Host gitlab-work` / `HostName gitlab.example.com` is the ordinary way to
+// write an ssh_config block, and callers match findings against real hostnames
+// from rotation.yaml. Reporting the alias marked every genuine finding
+// unmanaged while manufacturing a managed missing-config finding for the real
+// hostname — wrong in both directions at once. HostName is also declared after
+// IdentityFile here, which is legal and is why the parser buffers the block.
+func TestParseSSHConfig_ResolvesHostNameOverAlias(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config")
+	body := "Host gitlab-work\n" +
+		"  IdentityFile " + filepath.Join(dir, "id_work") + "\n" +
+		"  HostName gitlab.example.com\n" +
+		"\n" +
+		"Host plain.example.com\n" +
+		"  IdentityFile " + filepath.Join(dir, "id_plain") + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := ParseSSHConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("entries = %+v, want 2", entries)
+	}
+	if entries[0].Host != "gitlab.example.com" {
+		t.Errorf("entries[0].Host = %q, want the resolved HostName, not the alias", entries[0].Host)
+	}
+	if entries[1].Host != "plain.example.com" {
+		t.Errorf("entries[1].Host = %q, want the Host token when no HostName is declared", entries[1].Host)
+	}
+}
+
 func TestParseSSHConfig_MissingFileErrors(t *testing.T) {
 	if _, err := ParseSSHConfig(filepath.Join(t.TempDir(), "nope")); err == nil {
 		t.Fatal("want an error for a missing ssh_config file")

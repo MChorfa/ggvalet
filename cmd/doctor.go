@@ -229,11 +229,19 @@ func doctorProbeOtherHosts(cfg *config.Config) bool {
 
 // ─── rotation token health ──────────────────────────────────────────────────
 
-// tokenHealthWarnWithin is how far ahead of expiry doctor starts warning. It
-// clears rotate's default monthly cadence (rotation.DefaultCadenceDays) with
-// margin, so a token doctor calls healthy today should not expire before the
-// next scheduled rotation.
-const tokenHealthWarnWithin = 14 * 24 * time.Hour
+// tokenHealthWarnWithin is how far ahead of expiry doctor starts warning.
+// Derived, not hand-tuned: a token with less life left than one full rotation
+// cycle (DefaultPATExpiryDays - DefaultCadenceDays) means at least one
+// scheduled rotation has already been missed — which is exactly the failure
+// doctor exists to catch, since a token that lost self_rotate fails the
+// scheduled rotate silently and rotate --check never contacts a host to
+// notice. Expressed as a derivation so it self-corrects if either constant
+// changes, rather than as an independent magic duration.
+//
+// This does mean doctor can warn briefly around the moment a rotation is
+// legitimately due but simply hasn't run yet. That is the safe direction to
+// err in: a false warning costs a glance, a missed one costs a credential.
+const tokenHealthWarnWithin = time.Duration(rotation.DefaultPATExpiryDays-rotation.DefaultCadenceDays) * 24 * time.Hour
 
 // doctorGetSelfFunc matches rotation.GetSelfToken's signature so a test can
 // inject a fake and never open a socket.

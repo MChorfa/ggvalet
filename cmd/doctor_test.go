@@ -261,7 +261,8 @@ func TestDoctorTokenLines_NearExpiry(t *testing.T) {
 	hosts := map[string]*config.HostConfig{
 		"gitlab.example.com": {Token: "glpat-fake"},
 	}
-	// Three days out — inside the 14-day warning window.
+	// Three days out — inside the (DefaultPATExpiryDays - DefaultCadenceDays)
+	// warning window.
 	getSelf := fakeGetSelf(&rotation.TokenInfo{
 		ID: 1, Active: true, Scopes: []string{"api", "self_rotate"},
 		ExpiresAt: "2026-08-19",
@@ -415,6 +416,44 @@ func TestDoctorTokenLine_Inactive(t *testing.T) {
 	line := doctorTokenLine("gitlab.example.com", info, now)
 	if !strings.HasPrefix(line, "✗") || !strings.Contains(line, "inactive") {
 		t.Fatalf("expected an inactive failure line, got %q", line)
+	}
+}
+
+// tokenHealthWarnWithin must be derived from rotation's own constants, not a
+// hand-tuned literal — a hardcoded duration here would stop tracking the
+// value the moment either constant moved, the exact failure the derivation
+// removes.
+func TestTokenHealthWarnWithin_DerivedFromRotationConstants(t *testing.T) {
+	want := time.Duration(rotation.DefaultPATExpiryDays-rotation.DefaultCadenceDays) * 24 * time.Hour
+	if tokenHealthWarnWithin != want {
+		t.Fatalf("tokenHealthWarnWithin = %v, want %v (DefaultPATExpiryDays - DefaultCadenceDays)", tokenHealthWarnWithin, want)
+	}
+}
+
+// A token with slightly more than one full rotation cycle of life left is
+// healthy: even if the next scheduled rotation slipped by a day, there is
+// still time before doctor needs to say anything.
+func TestDoctorTokenLine_JustOverOneCadenceOfLifeLeft_NoWarning(t *testing.T) {
+	now := time.Date(2026, 8, 16, 0, 0, 0, 0, time.UTC)
+	exp := now.Add(tokenHealthWarnWithin + 24*time.Hour)
+	info := &rotation.TokenInfo{ID: 1, Active: true, Scopes: []string{"api", "self_rotate"}, ExpiresAt: exp.Format("2006-01-02")}
+
+	line := doctorTokenLine("gitlab.example.com", info, now)
+	if !strings.HasPrefix(line, "✓") {
+		t.Fatalf("expected a healthy line with just over one cadence of life left, got %q", line)
+	}
+}
+
+// A token with slightly less than one full rotation cycle of life left means
+// at least one scheduled rotation has already been missed — doctor must warn.
+func TestDoctorTokenLine_JustUnderOneCadenceOfLifeLeft_Warns(t *testing.T) {
+	now := time.Date(2026, 8, 16, 0, 0, 0, 0, time.UTC)
+	exp := now.Add(tokenHealthWarnWithin - 24*time.Hour)
+	info := &rotation.TokenInfo{ID: 1, Active: true, Scopes: []string{"api", "self_rotate"}, ExpiresAt: exp.Format("2006-01-02")}
+
+	line := doctorTokenLine("gitlab.example.com", info, now)
+	if !strings.HasPrefix(line, "✗") || !strings.Contains(line, "expires") {
+		t.Fatalf("expected a near-expiry warning with just under one cadence of life left, got %q", line)
 	}
 }
 

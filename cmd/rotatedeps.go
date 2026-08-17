@@ -84,7 +84,10 @@ func (w *rotateWiring) deps(ctx context.Context) rotation.Deps {
 			}
 			info, secret, err := w.api.rotate(ctx, hc.APIURL(host), hc.Token, expiresAt, hc.SkipTLS())
 			if err != nil {
-				return nil, "", redactSecrets(err, hc.Token)
+				// The one call holding both values: it authenticates with the
+				// configured token and mints the replacement. Redact both, even
+				// though a failing rotate returns an empty secret today.
+				return nil, "", redactSecrets(err, hc.Token, secret)
 			}
 			return info, secret, nil
 		},
@@ -105,8 +108,16 @@ func (w *rotateWiring) deps(ctx context.Context) rotation.Deps {
 			return nil
 		},
 
-		SetToken: rotation.SetHostToken,
-		Digest:   rotation.FileDigest,
+		// SetHostToken is handed the new secret and its errors reach stderr
+		// through the state machine's `commit %s: %w`. Every return it has today
+		// carries a path or a host name only (traced at review time); the
+		// wrapper is what keeps that true if one of them ever grows the value.
+		SetToken: func(path, host, token string) error {
+			return redactSecrets(rotation.SetHostToken(path, host, token), token)
+		},
+		// Digest takes a path and returns a hash — no secret crosses this seam,
+		// so it is wired raw.
+		Digest: rotation.FileDigest,
 
 		Journal: func(host string, tokenID int, ok bool) error {
 			e := journal.Entry{

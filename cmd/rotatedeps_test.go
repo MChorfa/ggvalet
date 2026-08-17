@@ -142,6 +142,23 @@ func TestRotateDeps_GetSelfAndRotateNeverLeakTheConfiguredToken(t *testing.T) {
 	}
 }
 
+// Rotate is the one call that can hold both values at once: it authenticates
+// with the configured token and returns the replacement.
+func TestRotateDeps_RotateRedactsTheReplacementItJustReceived(t *testing.T) {
+	w, _, _ := wiringWithAPI(rotateAPI{
+		rotate: func(context.Context, string, string, string, bool) (*rotation.TokenInfo, string, error) {
+			return nil, testNewSecret, fmt.Errorf("POST failed after minting %s", testNewSecret)
+		},
+	})
+	_, _, err := w.deps(context.Background()).Rotate(context.Background(), testHost, "2026-12-31")
+	if err == nil {
+		t.Fatal("Rotate should fail")
+	}
+	if strings.Contains(err.Error(), testNewSecret) {
+		t.Fatalf("the replacement leaked into the error: %q", err)
+	}
+}
+
 func TestRotateDeps_VerifyTokenAuthenticatesWithTheNewSecret(t *testing.T) {
 	var seen string
 	w, _, _ := wiringWithAPI(rotateAPI{

@@ -863,6 +863,42 @@ func TestRecoverIn_MissingConfigKeepsTheEscrow(t *testing.T) {
 	}
 }
 
+// A writer that reports success without writing must not be believed. The only
+// evidence a commit worked is re-reading the host's own token line; without the
+// read-back, this rotation would journal a success and delete the sole
+// remaining copy of the secret.
+func TestRotate_SilentlyUnwrittenCommitKeepsTheEscrow(t *testing.T) {
+	r, log, cfgPath, escrowDir := newTestRotator(t, "")
+	r.Deps.SetToken = func(path, host, token string) error {
+		log.setCalls++
+		return nil // claims success, writes nothing
+	}
+
+	res, err := r.Rotate(context.Background(), testHost, testOptions(escrowDir, cfgPath))
+	if err == nil {
+		t.Fatal("expected the commit to fail when the config was not actually written")
+	}
+	if !strings.Contains(err.Error(), testHost) {
+		t.Errorf("error must name the host, got %q", err)
+	}
+	if res.Phase != PhaseCommit {
+		t.Errorf("Result.Phase = %q, want %q", res.Phase, PhaseCommit)
+	}
+	if strings.Contains(err.Error(), newSecret) {
+		t.Error("the secret must not appear in the error")
+	}
+	escrows := mustList(t, escrowDir)
+	if len(escrows) != 1 {
+		t.Fatalf("the escrow must survive an unconfirmed commit, got %d records", len(escrows))
+	}
+	if escrows[0].NewToken != newSecret {
+		t.Error("escrow lost the secret")
+	}
+	if len(log.journalOK) != 0 || len(log.stored) != 0 {
+		t.Error("an unconfirmed commit must not be journalled or recorded as rotated")
+	}
+}
+
 func TestResult_StringIsHumanReadable(t *testing.T) {
 	res := &Result{Host: testHost, Phase: PhaseDone, Rotated: true, NewTokenID: 51630}
 	got := res.String()

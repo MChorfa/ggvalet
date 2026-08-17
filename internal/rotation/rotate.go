@@ -229,6 +229,23 @@ func (r *Rotator) finish(ctx context.Context, esc *Escrow, res *Result) (*Result
 		if err := r.Deps.SetToken(esc.ConfigPath, esc.Host, esc.NewToken); err != nil {
 			return res, fmt.Errorf("commit %s: %w", esc.Host, err)
 		}
+		// Spec §7 phase 3, "re-read and confirm". SetToken returning nil means
+		// "I rewrote a line I matched", not "the token is where glab reads it".
+		// The escrow is deleted a few statements below, so believing the writer
+		// would destroy the only other copy of the secret on the strength of an
+		// unverified write. Read it back through the same host-scoped locator
+		// glab's consumer would resolve, and abort — retaining the escrow — if
+		// the value is not there.
+		written, err := configHasToken(esc.ConfigPath, esc.Host, esc.NewToken)
+		if err != nil {
+			return res, fmt.Errorf("commit %s: re-reading config after the write: %w", esc.Host, err)
+		}
+		if !written {
+			return res, fmt.Errorf(
+				"commit %s: the config was written but does not carry the new token; "+
+					"refusing to retire the escrow. The new token is held at %s",
+				esc.Host, esc.Path)
+		}
 	}
 
 	// ── Phase 3: record. Only now is the escrow retired. ──────────────────

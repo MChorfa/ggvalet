@@ -533,11 +533,20 @@ func TestDue_ForceAndUnreadableStateBothCountAsDue(t *testing.T) {
 func TestJournalFailure_SaysSoWhenItCannotRecord(t *testing.T) {
 	f := newRotateFixture(t)
 	f.runner.jrnl = brokenJournal{}
-	f.runner.journalFailure(&rotation.Result{
-		Host: testHost, Phase: rotation.PhaseCommit, Rotated: true, NewTokenID: 51630,
-	})
-	if !strings.Contains(f.errOut.String(), "could not be journalled") {
-		t.Fatalf("a failed journal write must be reported:\n%s", f.errOut.String())
+	f.deps.VerifyToken = func(context.Context, string, string) error { return errors.New("HTTP 401") }
+	f.rebind()
+
+	if err := f.runner.rotateHosts(context.Background(), false); err == nil {
+		t.Fatal("the run should fail at verify")
+	}
+	printed := f.errOut.String()
+	if !strings.Contains(printed, "could not be journalled") {
+		t.Fatalf("a failed journal write must be reported:\n%s", printed)
+	}
+	// The line is indented to sit inside the CRITICAL block, so it has to be
+	// printed inside it rather than above its header.
+	if strings.Index(printed, "could not be journalled") < strings.Index(printed, "CRITICAL") {
+		t.Fatalf("the journal-failure line precedes the block it is indented under:\n%s", printed)
 	}
 }
 

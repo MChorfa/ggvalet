@@ -207,8 +207,10 @@ func (rr *rotateRunner) rotateHosts(ctx context.Context, force bool) error {
 			continue
 		}
 		criticals = append(criticals, res)
-		rr.journalFailure(res)
+		// printCritical first: journalFailure's own error line is indented to
+		// sit inside that block.
 		rr.printCritical(res, err)
+		rr.journalFailure(res)
 	}
 
 	// Reprint the half-finished rotations last: they are the one outcome that

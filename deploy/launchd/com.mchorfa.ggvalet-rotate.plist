@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.mchorfa.ggvalet-rotate</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/ggvalet</string>
+        <string>rotate</string>
+    </array>
+
+    <!-- 1st of each month at 04:00. launchd coalesces missed calendar events,
+         so a machine asleep on the 1st rotates at next wake. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Day</key><integer>1</integer>
+        <key>Hour</key><integer>4</integer>
+        <key>Minute</key><integer>0</integer>
+    </dict>
+
+    <key>ProcessType</key><string>Background</string>
+    <key>LowPriorityIO</key><true/>
+    <key>StandardOutPath</key><string>/Users/mchorfa/.local/log/ggvalet-rotate.log</string>
+    <key>StandardErrorPath</key><string>/Users/mchorfa/.local/log/ggvalet-rotate.log</string>
+</dict>
+</plist>

@@ -83,6 +83,7 @@ ggvalet hosts
 | **Reporting** | `report`, `report push`, `journal show`, `journal stats`, `receipt export` |
 | **Reconcile** | `plan validate`, `plan diff`, `plan apply`, `plan status`, `plan explain`, `plan resume` |
 | **Ops** | `hosts`, `cache stats`, `cache flush`, `doctor` |
+| **Credential rotation** | `rotate` (`--check`, `--force`, `--recover`), `ssh audit` — see [`docs/rotation.md`](docs/rotation.md) |
 
 ---
 

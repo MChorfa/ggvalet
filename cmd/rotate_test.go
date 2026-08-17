@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/MChorfa/ggvalet/internal/config"
 	"github.com/MChorfa/ggvalet/internal/journal"
 	"github.com/MChorfa/ggvalet/internal/rotation"
 )
@@ -155,15 +157,24 @@ type rotateFixture struct {
 	escrow  string
 }
 
-func newRotateFixture(t *testing.T) *rotateFixture {
+// writeRotatableConfig writes a glab config whose host block can actually
+// receive a token, which preflight proves by running the real writer over a
+// copy of it.
+func writeRotatableConfig(t *testing.T, dir string) string {
 	t.Helper()
-	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yml")
 	body := "host: " + testHost + "\nhosts:\n  " + testHost + ":\n    " +
 		"token" + ": " + testOldToken + "\n    api_protocol: https\n"
 	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
+	return cfgPath
+}
+
+func newRotateFixture(t *testing.T) *rotateFixture {
+	t.Helper()
+	dir := t.TempDir()
+	cfgPath := writeRotatableConfig(t, dir)
 
 	j := &fakeJournal{}
 	now := time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC)
@@ -225,6 +236,68 @@ func (f *rotateFixture) assertNoSecret(t *testing.T) {
 	for _, e := range f.jrnl.entries {
 		if strings.Contains(e.Detail, fixtureSecret) || strings.Contains(e.Title, fixtureSecret) {
 			t.Fatalf("the new secret reached the journal: %+v", e)
+		}
+	}
+}
+
+// The fixture above installs a rotation.Deps literal, so it never exercises
+// rotateWiring.deps — and therefore never exercises redactSecrets. This test
+// builds the runner the way runRotate does, from a wiring whose API leaks the
+// secret it is handed, so the composition at rotate.go's
+// `Rotator{Deps: w.deps(ctx)}` is what is under test. Remove the redaction from
+// VerifyToken and this fails; the fixture-based tests do not.
+func TestRotateHosts_ComposedWiringStripsALeakedSecretFromTheOutput(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := writeRotatableConfig(t, dir)
+	j := &fakeJournal{}
+
+	w := &rotateWiring{
+		api: rotateAPI{
+			// Preflight authenticates with the configured token and succeeds;
+			// verify authenticates with the new secret and leaks it.
+			getSelf: func(_ context.Context, baseURL, token string, _ bool) (*rotation.TokenInfo, error) {
+				if token == fixtureSecret {
+					return nil, fmt.Errorf("GET %s: rejected token %s", baseURL, token)
+				}
+				return &rotation.TokenInfo{ID: 1000, Active: true, Scopes: []string{"api", "self_rotate"}}, nil
+			},
+			rotate: func(context.Context, string, string, string, bool) (*rotation.TokenInfo, string, error) {
+				return &rotation.TokenInfo{ID: 51630}, fixtureSecret, nil
+			},
+		},
+		hosts: map[string]*config.HostConfig{testHost: {Token: testOldToken, APIProtocol: "https"}},
+		store: &fakeRotateStore{},
+		jrnl:  j,
+		warn:  func(string, ...any) {},
+	}
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	rr := &rotateRunner{
+		rot: &rotation.Rotator{Deps: w.deps(context.Background())},
+		rc: &rotation.Config{
+			Defaults: rotation.Defaults{CadenceDays: 30, PATExpiryDays: 65},
+			Hosts:    map[string]rotation.Profile{testHost: {Credentials: []string{"pat"}}},
+		},
+		jrnl:       j,
+		escrowDir:  filepath.Join(dir, "escrow"),
+		configPath: cfgPath,
+		now:        time.Now,
+		out:        out,
+		errOut:     errOut,
+	}
+
+	if err := rr.rotateHosts(context.Background(), false); err == nil {
+		t.Fatal("the run should fail at verify")
+	}
+	printed := out.String() + errOut.String()
+	if strings.Contains(printed, fixtureSecret) {
+		t.Fatalf("the leaked secret reached the operator's terminal:\n%s", printed)
+	}
+	if !strings.Contains(printed, "[redacted]") {
+		t.Fatalf("the leak should have been stripped by the wiring, not merely absent:\n%s", printed)
+	}
+	for _, e := range j.entries {
+		if strings.Contains(e.Detail, fixtureSecret) {
+			t.Fatalf("the leaked secret reached the journal: %+v", e)
 		}
 	}
 }

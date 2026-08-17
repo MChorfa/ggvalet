@@ -103,6 +103,7 @@ func Execute(version string) {
 		planCmd(),
 		doctorCmd(),
 		rotateCmd(),
+		sshCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

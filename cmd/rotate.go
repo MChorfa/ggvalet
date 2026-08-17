@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/MChorfa/ggvalet/internal/config"
@@ -81,6 +82,7 @@ type rotateRunner struct {
 	jrnl        journalRecorder
 	escrowDir   string
 	configPath  string
+	only        string // --host: restrict the run to this one host; "" means all
 	now         func() time.Time
 	lastRotated func(host string) (time.Time, bool, error)
 	out         io.Writer
@@ -135,6 +137,7 @@ func runRotate(ctx context.Context, o rotateOptions) error {
 		jrnl:       jrnl,
 		escrowDir:  escrowDir(),
 		configPath: glabConfigPath(),
+		only:       hostFlag,
 		now:        time.Now,
 		lastRotated: func(host string) (time.Time, bool, error) {
 			return st.LastRotated(ctx, host)
@@ -166,12 +169,44 @@ func rotatePaths() (statePath, journalPath string, err error) {
 	return c.StatePath, c.JournalPath, nil
 }
 
-// patHosts returns the hosts declaring a PAT, sorted so a multi-host run reads
-// the same way twice.
+// scoped reports whether host is in this run's scope. With --host set, a run
+// covers that host alone: the runbook's rollout step is a single watched
+// rotation, so a --host that widened to every host would give that step the
+// blast radius it exists to avoid.
+func (rr *rotateRunner) scoped(host string) bool {
+	return rr.only == "" || rr.only == host
+}
+
+// checkScope rejects a --host that names something rotation.yaml does not
+// declare. Silently rotating nothing looks identical to a healthy no-op run,
+// which is the wrong answer to a typo in the one flag that limits blast radius.
+func (rr *rotateRunner) checkScope() error {
+	if rr.only == "" {
+		return nil
+	}
+	if _, ok := rr.rc.Hosts[rr.only]; !ok {
+		return fmt.Errorf("host %q is not declared in the rotation profile; declared hosts: %s",
+			rr.only, strings.Join(rr.declaredHosts(), ", "))
+	}
+	return nil
+}
+
+// declaredHosts returns every host in the rotation profile, sorted.
+func (rr *rotateRunner) declaredHosts() []string {
+	var out []string
+	for host := range rr.rc.Hosts {
+		out = append(out, host)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// patHosts returns the in-scope hosts declaring a PAT, sorted so a multi-host
+// run reads the same way twice.
 func (rr *rotateRunner) patHosts() []string {
 	var out []string
 	for host := range rr.rc.Hosts {
-		if rr.rc.Uses(host, "pat") {
+		if rr.rc.Uses(host, "pat") && rr.scoped(host) {
 			out = append(out, host)
 		}
 	}
@@ -179,12 +214,12 @@ func (rr *rotateRunner) patHosts() []string {
 	return out
 }
 
-// sshOnlyHosts returns hosts that declare ssh but not pat, sorted. patHosts
-// silently skips them; this makes that skip visible.
+// sshOnlyHosts returns in-scope hosts that declare ssh but not pat, sorted.
+// patHosts silently skips them; this makes that skip visible.
 func (rr *rotateRunner) sshOnlyHosts() []string {
 	var out []string
 	for host := range rr.rc.Hosts {
-		if rr.rc.Uses(host, "ssh") && !rr.rc.Uses(host, "pat") {
+		if rr.rc.Uses(host, "ssh") && !rr.rc.Uses(host, "pat") && rr.scoped(host) {
 			out = append(out, host)
 		}
 	}
@@ -206,6 +241,9 @@ func (rr *rotateRunner) rotateHosts(ctx context.Context, force bool) error {
 	var problems int
 	var criticals []*rotation.Result
 
+	if err := rr.checkScope(); err != nil {
+		return err
+	}
 	rr.noteSSHOnlyHosts()
 	for _, host := range rr.patHosts() {
 		res, err := rr.rot.Rotate(ctx, host, rotation.Options{
@@ -301,6 +339,9 @@ func (rr *rotateRunner) journalFailure(res *rotation.Result) {
 func (rr *rotateRunner) checkHosts(force bool) error {
 	var problems int
 
+	if err := rr.checkScope(); err != nil {
+		return err
+	}
 	escrows, skipped, err := rotation.ListEscrows(rr.escrowDir)
 	if err != nil {
 		return fmt.Errorf("reading escrow dir: %w", err)

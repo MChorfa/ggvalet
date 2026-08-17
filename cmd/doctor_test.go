@@ -387,7 +387,7 @@ func TestPatHostNames_OnlyHostsDeclaringPAT(t *testing.T) {
 		"ssh-only.example.com": {Credentials: []string{"ssh"}},
 		"both.example.com":     {Credentials: []string{"pat", "ssh"}},
 	}}
-	got := patHostNames(rc)
+	got := patHostNames(rc, "")
 	want := []string{"both.example.com", "pat-only.example.com"}
 	if len(got) != len(want) {
 		t.Fatalf("patHostNames() = %v, want %v", got, want)
@@ -396,6 +396,25 @@ func TestPatHostNames_OnlyHostsDeclaringPAT(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("patHostNames() = %v, want %v", got, want)
 		}
+	}
+}
+
+// A doctor run scoped with --host must answer about that host alone. Before
+// this, doctorTokenHealth probed every PAT host regardless of the flag, so an
+// operator scoping a check to one host silently got remote calls for all of
+// them.
+func TestPatHostNames_ScopedToOneHost(t *testing.T) {
+	rc := &rotation.Config{Hosts: map[string]rotation.Profile{
+		"pat-only.example.com": {Credentials: []string{"pat"}},
+		"ssh-only.example.com": {Credentials: []string{"ssh"}},
+		"both.example.com":     {Credentials: []string{"pat", "ssh"}},
+	}}
+	got := patHostNames(rc, "both.example.com")
+	if len(got) != 1 || got[0] != "both.example.com" {
+		t.Fatalf("patHostNames(rc, %q) = %v, want exactly [both.example.com]", "both.example.com", got)
+	}
+	if scoped := patHostNames(rc, "ssh-only.example.com"); len(scoped) != 0 {
+		t.Fatalf("a host declaring no PAT must yield no token checks, got %v", scoped)
 	}
 }
 

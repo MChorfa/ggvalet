@@ -248,11 +248,14 @@ const tokenHealthWarnWithin = time.Duration(rotation.DefaultPATExpiryDays-rotati
 type doctorGetSelfFunc func(ctx context.Context, baseURL, token string, skipTLS bool) (*rotation.TokenInfo, error)
 
 // patHostNames returns the hosts rc declares a PAT for, sorted so a run reads
-// the same way twice.
-func patHostNames(rc *rotation.Config) []string {
+// the same way twice. only restricts the result to a single host, mirroring
+// `rotate --host`; "" means every declared host. An operator who scopes a
+// rotation to one host and then asks doctor about it should get an answer
+// about that host, not about all of them.
+func patHostNames(rc *rotation.Config, only string) []string {
 	var out []string
 	for host := range rc.Hosts {
-		if rc.Uses(host, "pat") {
+		if rc.Uses(host, "pat") && (only == "" || only == host) {
 			out = append(out, host)
 		}
 	}
@@ -319,7 +322,7 @@ func doctorTokenHealth() bool {
 		return false
 	}
 
-	patHosts := patHostNames(rc)
+	patHosts := patHostNames(rc, hostFlag)
 	if len(patHosts) == 0 {
 		info("rotation: no host declares a PAT; skipping token health checks")
 		return true

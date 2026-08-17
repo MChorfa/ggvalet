@@ -656,6 +656,57 @@ func TestCheckHosts_SSHOnlyHostIsNotedNotSilentlyDropped(t *testing.T) {
 	}
 }
 
+// docs/rotation.md makes `rotate --force --host <one-host>` the rollout gate:
+// one watched rotation before the schedule is loaded. Until this, --host was
+// accepted and ignored, so following the runbook exactly rotated every PAT
+// host during the step designed to have the smallest possible blast radius.
+func TestRotateHosts_HostFlagRestrictsTheRunToThatHost(t *testing.T) {
+	f := newRotateFixture(t)
+	f.runner.rc.Hosts["other.example.com"] = rotation.Profile{Credentials: []string{"pat"}}
+	f.runner.only = testHost
+
+	got := f.runner.patHosts()
+	if len(got) != 1 || got[0] != testHost {
+		t.Fatalf("patHosts() = %v, want exactly [%s] — --host must not widen to every host", got, testHost)
+	}
+}
+
+func TestRotateHosts_UnscopedRunCoversEveryPATHost(t *testing.T) {
+	f := newRotateFixture(t)
+	f.runner.rc.Hosts["other.example.com"] = rotation.Profile{Credentials: []string{"pat"}}
+
+	if got := f.runner.patHosts(); len(got) != 2 {
+		t.Fatalf("patHosts() = %v, want both hosts when --host is unset", got)
+	}
+}
+
+// A typo in the one flag that limits blast radius must not read as a healthy
+// no-op run.
+func TestRotateHosts_UnknownHostFlagIsAnError(t *testing.T) {
+	f := newRotateFixture(t)
+	f.runner.only = "not-declared.example.com"
+
+	err := f.runner.rotateHosts(context.Background(), false)
+	if err == nil {
+		t.Fatal("a --host naming an undeclared host must fail, not silently rotate nothing")
+	}
+	if !strings.Contains(err.Error(), "not-declared.example.com") {
+		t.Fatalf("the error must name the host that was not found: %v", err)
+	}
+	if !strings.Contains(err.Error(), testHost) {
+		t.Fatalf("the error should list the hosts that ARE declared, to catch a typo: %v", err)
+	}
+}
+
+func TestCheckHosts_UnknownHostFlagIsAnError(t *testing.T) {
+	f := newRotateFixture(t)
+	f.runner.only = "not-declared.example.com"
+
+	if err := f.runner.checkHosts(false); err == nil {
+		t.Fatal("--check must reject an undeclared --host too")
+	}
+}
+
 func TestRotateRunner_SSHOnlyHosts(t *testing.T) {
 	f := newRotateFixture(t)
 	f.runner.rc.Hosts["ssh-only.example.com"] = rotation.Profile{Credentials: []string{"ssh"}}

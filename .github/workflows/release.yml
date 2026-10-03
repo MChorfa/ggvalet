@@ -69,7 +69,7 @@ jobs:
         run: bash scripts/build-site.sh --metadata dist/metadata.json --artifacts dist/artifacts.json --version ${{ github.ref_name }} --output site
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
 

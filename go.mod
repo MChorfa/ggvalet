@@ -12,6 +12,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/spf13/cobra v1.8.1
+	github.com/stretchr/testify v1.11.1
 	github.com/xanzy/go-gitlab v0.115.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.43.0

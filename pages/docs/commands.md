@@ -25,6 +25,8 @@ Usage:
   ggvalet [command]
 
 Available Commands:
+  agent       Next-gen governed autonomous agent operating over capability leases and vector state
+  audit       Audit project compliance against canonical delivery standards
   cache       Manage the local API response cache
   ci          Manage CI/CD pipelines, jobs, and artifacts
   completion  Generate the autocompletion script for the specified shell
@@ -34,18 +36,24 @@ Available Commands:
   hosts       List configured hosts and the active provider
   issue       Manage GitLab issues
   journal     Browse your GitLab activity ledger
+  lab         Manage local GG Valet Delivery Laboratory (Milestone 0)
   label       Manage project labels
+  lifecycle   Persona lifecycle management (onboard, offboard, status) across all 5 personas
   milestone   Manage project milestones
   mr          Manage merge requests
   plan        Manage structured work plans
   receipt     Inspect or export durable operation receipts
+  reconcile   Reconcile project deviations under explicit capability leases
   renovate    Triage Renovate bot merge requests — list, approve, merge
   report      Generate a manager-ready activity report from the journal
+  rules       Progressive governance engine for candidate policy discovery, simulation, and promotion
   search      Full-text search across issues, epics, MRs — optionally on all instances
   shields     Project health badges (shields.io markdown) and label chips
   standup     Generate a daily standup summary from the journal + open issues
   sync        Copy issues / epics / milestones between any two GitLab instances
   timeline    Gantt-style timeline of epics and milestones
+  transfer    Manage sealed air-gap bundle packaging and diode transmission
+  trustwall   Manage Trustwall admission, quarantine, and promotion gates
   tui         Interactive terminal UI — browse issues, epics, milestones, journal
   wi          Manage GitLab work items (tasks, objectives, key results)
 
@@ -58,6 +66,45 @@ Use "ggvalet [command] --help" for more information about a command.
 ```
 
 ## Commands
+
+### agent
+
+```text
+Next-gen governed autonomous agent operating over capability leases and vector state
+
+Usage:
+  ggvalet agent [command]
+
+Available Commands:
+  plan        Formulate a minimal transition plan for an intent without side effects
+  run         Execute an autonomous cognitive control loop under an attenuated capability lease
+  status      Inspect latest vector states and evidence ledger for autonomous agent runs
+
+Flags:
+  -h, --help   help for agent
+
+Global Flags:
+  -H, --host string   GitLab instance hostname (overrides glab default)
+
+Use "ggvalet agent [command] --help" for more information about a command.
+```
+
+### audit
+
+```text
+Audit project compliance against canonical delivery standards
+
+Usage:
+  ggvalet audit [flags]
+
+Flags:
+  -h, --help             help for audit
+      --json             Output assessment as JSON
+  -p, --project string   Target project to audit
+
+Global Flags:
+  -H, --host string   GitLab instance hostname (overrides glab default)
+```
 
 ### cache
 
@@ -229,6 +276,29 @@ Global Flags:
 Use "ggvalet journal [command] --help" for more information about a command.
 ```
 
+### lab
+
+```text
+Manage local GG Valet Delivery Laboratory (Milestone 0)
+
+Usage:
+  ggvalet lab [command]
+
+Available Commands:
+  down        Tear down laboratory environment
+  seed        Seed the 30 known delivery deviations into the laboratory
+  status      Inspect laboratory topology and domain health
+  up          Spin up the simulated delivery world
+
+Flags:
+  -h, --help   help for lab
+
+Global Flags:
+  -H, --host string   GitLab instance hostname (overrides glab default)
+
+Use "ggvalet lab [command] --help" for more information about a command.
+```
+
 ### label
 
 ```text
@@ -252,6 +322,28 @@ Global Flags:
   -H, --host string   GitLab instance hostname (overrides glab default)
 
 Use "ggvalet label [command] --help" for more information about a command.
+```
+
+### lifecycle
+
+```text
+Persona lifecycle management (onboard, offboard, status) across all 5 personas
+
+Usage:
+  ggvalet lifecycle [command]
+
+Available Commands:
+  offboard    Safely offboard or archive a persona, revoke leases, and record terminal SAFE_HOLD vector
+  onboard     Onboard a persona (user, project, agent, service, auditor) into the governed fabric
+  status      Inspect lifecycle vector states and persona assurance standing
+
+Flags:
+  -h, --help   help for lifecycle
+
+Global Flags:
+  -H, --host string   GitLab instance hostname (overrides glab default)
+
+Use "ggvalet lifecycle [command] --help" for more information about a command.
 ```
 
 ### milestone
@@ -354,6 +446,27 @@ Global Flags:
 Use "ggvalet receipt [command] --help" for more information about a command.
 ```
 
+### reconcile
+
+```text
+Reconcile project deviations under explicit capability leases
+
+Usage:
+  ggvalet reconcile [flags]
+
+Flags:
+      --dry-run          Simulate execution without mutations
+  -h, --help             help for reconcile
+      --json             Output results as JSON
+  -p, --project string   Target project to reconcile
+      --remediate        Under valet-advisor, generate remediation Merge Request
+      --role string      Authority role (valet-observer, valet-advisor, valet-reconciler, valet-admin-test)
+      --yes              Confirm live execution of authorized transitions
+
+Global Flags:
+  -H, --host string   GitLab instance hostname (overrides glab default)
+```
+
 ### renovate
 
 ```text
@@ -417,6 +530,29 @@ Global Flags:
   -H, --host string   GitLab instance hostname (overrides glab default)
 
 Use "ggvalet report [command] --help" for more information about a command.
+```
+
+### rules
+
+```text
+Progressive governance engine for candidate policy discovery, simulation, and promotion
+
+Usage:
+  ggvalet rules [command]
+
+Available Commands:
+  discover    Formulate an optimization candidate from historical pipeline observations
+  list        List all candidate and progressive governance rules
+  promote     Promote a candidate rule to SHADOW, WARN, or ENFORCE
+  simulate    Simulate candidate rule against historical pipeline traces to verify safety
+
+Flags:
+  -h, --help   help for rules
+
+Global Flags:
+  -H, --host string   GitLab instance hostname (overrides glab default)
+
+Use "ggvalet rules [command] --help" for more information about a command.
 ```
 
 ### search
@@ -517,9 +653,13 @@ Examples:
   ggvalet sync milestones --src-project g/proj-a --dst-project g/proj-b
 
 Available Commands:
+  drift       Analyze content drift and vector state between source and destination entities
   epics       Sync epics from source group → destination group
+  index       Manage local sync index of federated entity markers
   issues      Sync issues from source project → destination project
   milestones  Sync milestones from source project → destination project
+  quarantine  Inspect and resolve quarantined conflict records
+  reconcile   Reconcile federated drift under explicit capability leases
 
 Flags:
   -h, --help   help for sync
@@ -553,6 +693,47 @@ Flags:
 
 Global Flags:
   -H, --host string   GitLab instance hostname (overrides glab default)
+```
+
+### transfer
+
+```text
+Manage sealed air-gap bundle packaging and diode transmission
+
+Usage:
+  ggvalet transfer [command]
+
+Available Commands:
+  diode       Transmit sealed bundle through hardware diode into air-gap registry
+  package     Seal an admitted artifact into an immutable air-gap evidence bundle
+
+Flags:
+  -h, --help   help for transfer
+
+Global Flags:
+  -H, --host string   GitLab instance hostname (overrides glab default)
+
+Use "ggvalet transfer [command] --help" for more information about a command.
+```
+
+### trustwall
+
+```text
+Manage Trustwall admission, quarantine, and promotion gates
+
+Usage:
+  ggvalet trustwall [command]
+
+Available Commands:
+  verify      Verify artifact claims against Trustwall mandatory invariants
+
+Flags:
+  -h, --help   help for trustwall
+
+Global Flags:
+  -H, --host string   GitLab instance hostname (overrides glab default)
+
+Use "ggvalet trustwall [command] --help" for more information about a command.
 ```
 
 ### tui

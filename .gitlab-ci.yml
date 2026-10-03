@@ -4,7 +4,7 @@ stages: [verify, test, security, governance, build, release]
 
 variables:
   GOFLAGS: "-mod=mod"
-  GO_IMAGE: "golang:1.24"          # matches go.mod's declared minimum (go 1.24)
+  GO_IMAGE: "golang:1.26"          # matches go.mod's declared toolchain (go 1.26)
   MIN_COVERAGE: "80"               # CLAUDE.md §4 min_test_coverage
 
 # ── verify: format, vet, build ─────────────────────────────────────────────

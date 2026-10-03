@@ -127,6 +127,79 @@ CREATE TABLE IF NOT EXISTS plan_steps (
  error TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL,
  PRIMARY KEY(run_id, step_id),
  FOREIGN KEY(run_id) REFERENCES plan_runs(id)
+);
+CREATE TABLE IF NOT EXISTS refusal_receipts (
+ id TEXT PRIMARY KEY, lease_id TEXT NOT NULL, subject_role TEXT NOT NULL,
+ attempted_action TEXT NOT NULL, attempted_resource TEXT NOT NULL,
+ reason TEXT NOT NULL, evidence_digest TEXT NOT NULL, occurred_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS refusal_receipts_time ON refusal_receipts(occurred_at);
+CREATE TABLE IF NOT EXISTS trustwall_receipts (
+ id TEXT PRIMARY KEY, artifact_id TEXT NOT NULL, decision TEXT NOT NULL,
+ violations TEXT NOT NULL, obligations TEXT NOT NULL,
+ receipt_digest TEXT NOT NULL, evaluated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS vector_states (
+ entity_id TEXT NOT NULL, presence TEXT NOT NULL, valence TEXT NOT NULL,
+ anti TEXT NOT NULL, coherence TEXT NOT NULL, evidence TEXT NOT NULL,
+ mode TEXT NOT NULL, epoch INTEGER NOT NULL, timestamp TEXT NOT NULL,
+ PRIMARY KEY(entity_id, epoch)
+);
+CREATE TABLE IF NOT EXISTS candidate_rules (
+ id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL,
+ pattern TEXT NOT NULL, stage TEXT NOT NULL, match_frequency REAL NOT NULL,
+ estimated_savings TEXT NOT NULL, approved_by TEXT NOT NULL DEFAULT '',
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sync_index (
+ id TEXT PRIMARY KEY,
+ src_host TEXT NOT NULL,
+ src_project TEXT NOT NULL,
+ entity_type TEXT NOT NULL,
+ src_iid INTEGER NOT NULL,
+ src_url TEXT NOT NULL,
+ dst_host TEXT NOT NULL,
+ dst_project TEXT NOT NULL,
+ dst_iid INTEGER NOT NULL,
+ dst_url TEXT NOT NULL,
+ content_digest TEXT NOT NULL,
+ sync_epoch INTEGER NOT NULL,
+ status TEXT NOT NULL,
+ last_synced_at TEXT NOT NULL,
+ UNIQUE(src_host, src_project, entity_type, src_iid, dst_host, dst_project)
+);
+CREATE TABLE IF NOT EXISTS sync_checkpoints (
+ run_id TEXT PRIMARY KEY,
+ src_host TEXT NOT NULL,
+ src_project TEXT NOT NULL,
+ dst_host TEXT NOT NULL,
+ dst_project TEXT NOT NULL,
+ cursor_page INTEGER NOT NULL,
+ last_processed_iid INTEGER NOT NULL,
+ status TEXT NOT NULL,
+ items_processed INTEGER NOT NULL,
+ items_failed INTEGER NOT NULL,
+ items_skipped INTEGER NOT NULL,
+ updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS quarantine_records (
+ id TEXT PRIMARY KEY,
+ entity_key TEXT NOT NULL,
+ entity_type TEXT NOT NULL,
+ src_host TEXT NOT NULL,
+ src_project TEXT NOT NULL,
+ src_iid INTEGER NOT NULL,
+ dst_host TEXT NOT NULL,
+ dst_project TEXT NOT NULL,
+ dst_iid INTEGER NOT NULL,
+ src_snapshot TEXT NOT NULL,
+ dst_snapshot TEXT NOT NULL,
+ baseline_digest TEXT NOT NULL,
+ quarantine_reason TEXT NOT NULL,
+ resolution_status TEXT NOT NULL,
+ resolved_by TEXT NOT NULL DEFAULT '',
+ quarantined_at TEXT NOT NULL,
+ resolved_at TEXT NOT NULL DEFAULT ''
 );`
 	if _, err := s.db.Exec(schema); err != nil {
 		return fmt.Errorf("state migrate: %w", err)
@@ -390,4 +463,34 @@ func (s *Store) SetStep(ctx context.Context, runID, stepID, status string, remot
  WHERE run_id=? AND step_id=?`, status, remoteID, remoteIID, webURL, detail,
 		time.Now().UTC().Format(time.RFC3339Nano), runID, stepID)
 	return err
+}
+
+// IntegrityCheck runs SQLite PRAGMA integrity_check to verify database consistency.
+func (s *Store) IntegrityCheck(ctx context.Context) error {
+	var result string
+	if err := s.db.QueryRowContext(ctx, "PRAGMA integrity_check;").Scan(&result); err != nil {
+		return fmt.Errorf("integrity check failed: %w", err)
+	}
+	if result != "ok" {
+		return fmt.Errorf("database integrity corrupted: %s", result)
+	}
+	return nil
+}
+
+// EvidenceCensus returns record counts across all evidence and governance tables.
+func (s *Store) EvidenceCensus(ctx context.Context) (map[string]int, error) {
+	counts := make(map[string]int)
+	tables := []string{
+		"operations", "receipt_events", "refusal_receipts",
+		"trustwall_receipts", "vector_states", "candidate_rules",
+		"sync_index", "sync_checkpoints", "quarantine_records",
+	}
+	for _, table := range tables {
+		var count int
+		query := fmt.Sprintf("SELECT COUNT(*) FROM %s;", table)
+		if err := s.db.QueryRowContext(ctx, query).Scan(&count); err == nil {
+			counts[table] = count
+		}
+	}
+	return counts, nil
 }

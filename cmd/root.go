@@ -102,6 +102,14 @@ func Execute(version string) {
 		receiptCmd(),
 		planCmd(),
 		doctorCmd(),
+		labCmd(),
+		trustwallCmd(),
+		transferCmd(),
+		auditCmd(),
+		reconcileCmd(),
+		rulesCmd(),
+		agentCmd(),
+		lifecycleCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

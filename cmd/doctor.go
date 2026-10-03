@@ -74,8 +74,21 @@ func runDoctor() error {
 		fail("state.db: %v", err)
 		okChecks = false
 	} else {
+		if err := st.IntegrityCheck(context.Background()); err != nil {
+			fail("state.db integrity: %v", err)
+			okChecks = false
+		} else {
+			ok("state.db: writable & PRAGMA integrity_check passed")
+		}
+		if counts, err := st.EvidenceCensus(context.Background()); err == nil {
+			info("  evidence ledger: %d receipts, %d refusals, %d trustwall, %d vector states, %d sync mappings, %d quarantined",
+				counts["receipt_events"], counts["refusal_receipts"], counts["trustwall_receipts"],
+				counts["vector_states"], counts["sync_index"], counts["quarantine_records"])
+			if counts["quarantine_records"] > 0 {
+				info("  ⚠ %d entity(ies) in SAFE_HOLD / QUARANTINE (run 'ggvalet sync quarantine list')", counts["quarantine_records"])
+			}
+		}
 		_ = st.Close()
-		ok("state.db: writable")
 	}
 
 	// 3. Journal

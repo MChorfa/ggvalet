@@ -95,8 +95,17 @@ func syncCmd() *cobra.Command {
 
   # Milestones within the same host, different project
   ggvalet sync milestones --src-project g/proj-a --dst-project g/proj-b`,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error { return nil },
 	}
-	cmd.AddCommand(syncIssuesCmd(), syncEpicsCmd(), syncMilestonesCmd())
+	cmd.AddCommand(
+		syncIssuesCmd(),
+		syncEpicsCmd(),
+		syncMilestonesCmd(),
+		syncIndexCmd(),
+		syncDriftCmd(),
+		syncReconcileCmd(),
+		syncQuarantineCmd(),
+	)
 	return cmd
 }
 

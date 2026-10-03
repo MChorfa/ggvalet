@@ -68,3 +68,24 @@ func TestRenovateMergeApply(t *testing.T) {
 		t.Fatalf("renovate merge apply: %v", err)
 	}
 }
+
+type renovateProviderKind struct {
+	provider.Provider
+	kind provider.Kind
+}
+
+func (p renovateProviderKind) Kind() provider.Kind { return p.kind }
+
+func TestFetchRenovateMRs_AllProjectsRejectsNonGitLab(t *testing.T) {
+	c := setupTestClient(t)
+	c.Provider = renovateProviderKind{Provider: c.Provider, kind: provider.KindGitHub}
+	c.GL = nil
+
+	_, err := fetchRenovateMRs("", true)
+	if err == nil {
+		t.Fatal("expected non-GitLab all-project search to be rejected")
+	}
+	if !strings.Contains(err.Error(), "requires a GitLab provider") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

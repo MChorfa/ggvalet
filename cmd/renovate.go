@@ -11,6 +11,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync/atomic"
 
 	"github.com/MChorfa/ggvalet/internal/journal"
 	"github.com/MChorfa/ggvalet/internal/parallel"
@@ -224,29 +225,29 @@ func renovateApproveCmd() *cobra.Command {
 			}
 
 			pool := parallel.New(concurrency)
-			approved, failed := 0, 0
+			var approved, failed atomic.Int64
 
 			for _, mr := range targets {
 				mr := mr
 				pool.GoErr(func() error {
 					if err := glClient.Provider.ApproveMergeRequest(context.Background(), project, mr.IID); err != nil {
 						fmt.Fprintf(os.Stderr, "  %s !%d: %v\n", colorErr("✗"), mr.IID, err)
-						failed++
+						failed.Add(1)
 						return err
 					}
 					glClient.Rec(journal.OpUpdate, journal.EntityMR, project, "",
 						0, mr.IID, mr.Title, mr.WebURL, "renovate-approve")
 					fmt.Printf("  %s !%d  %s\n", colorOK("✓"), mr.IID, truncate(mr.Title, 60))
-					approved++
+					approved.Add(1)
 					return nil
 				})
 			}
 			pool.Wait()
 
-			fmt.Printf("\n%s %d approved  %s\n", colorOK("✓"), approved,
+			fmt.Printf("\n%s %d approved  %s\n", colorOK("✓"), approved.Load(),
 				func() string {
-					if failed > 0 {
-						return colorErr(fmt.Sprintf("%d failed", failed))
+					if n := failed.Load(); n > 0 {
+						return colorErr(fmt.Sprintf("%d failed", n))
 					}
 					return ""
 				}())
@@ -308,7 +309,7 @@ func renovateMergeCmd() *cobra.Command {
 			}
 
 			pool := parallel.New(concurrency)
-			merged, failed := 0, 0
+			var merged, failed atomic.Int64
 
 			for _, mr := range targets {
 				mr := mr
@@ -316,22 +317,22 @@ func renovateMergeCmd() *cobra.Command {
 					if _, err := glClient.Provider.MergeMergeRequest(context.Background(), project, mr.IID,
 						provider.MergeOptions{RemoveSourceBranch: true}); err != nil {
 						fmt.Fprintf(os.Stderr, "  %s !%d: %v\n", colorErr("✗"), mr.IID, err)
-						failed++
+						failed.Add(1)
 						return err
 					}
 					glClient.Rec(journal.OpUpdate, journal.EntityMR, project, "",
 						0, mr.IID, mr.Title, mr.WebURL, "renovate-merge")
 					fmt.Printf("  %s !%d  %s\n", colorOK("✓"), mr.IID, truncate(mr.Title, 60))
-					merged++
+					merged.Add(1)
 					return nil
 				})
 			}
 			pool.Wait()
 
-			fmt.Printf("\n%s %d merged  %s\n", colorOK("✓"), merged,
+			fmt.Printf("\n%s %d merged  %s\n", colorOK("✓"), merged.Load(),
 				func() string {
-					if failed > 0 {
-						return colorErr(fmt.Sprintf("%d failed", failed))
+					if n := failed.Load(); n > 0 {
+						return colorErr(fmt.Sprintf("%d failed", n))
 					}
 					return ""
 				}())
@@ -395,7 +396,7 @@ func fetchRenovateMRs(project string, allProjects bool) ([]*provider.MergeReques
 	ctx := context.Background()
 
 	if allProjects || project == "" {
-		if glClient.GL == nil {
+		if glClient.Provider == nil || glClient.Provider.Kind() != provider.KindGitLab || glClient.GL == nil {
 			return nil, fmt.Errorf("searching across all projects requires a GitLab provider — set --project to scope to a specific repository")
 		}
 		// GitLab-only global MR list (no Provider equivalent for cross-project MR search).
